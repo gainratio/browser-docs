@@ -22,4 +22,11 @@ The check fails on missing metadata, JSON-LD, sitemap entries, broken internal l
 
 ## Deploy
 
-Deploy the repository root as static files, for example to Cloudflare Pages or any static host. The custom domain `browser.gainratio.com` should be attached to that deployment. `_headers` supplies the security policy and asset caching.
+Build `dist/` (which contains only the public web assets) and deploy it as static files to Cloudflare Pages or any static host:
+
+```sh
+npm run build && npm run check
+npx wrangler pages deploy dist --project-name browser-docs --branch main
+```
+
+The custom domain `browser.gainratio.com` should be attached to that deployment. `_headers` supplies the security policy and asset caching.

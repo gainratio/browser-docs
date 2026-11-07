@@ -1,9 +1,11 @@
 {
   "name": "browser-docs",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Static documentation site for @gainratio/browser (browser.gainratio.com).",
+  "description": "Standalone documentation site for @gainratio/browser (browser.gainratio.com)",
   "scripts": {
+    "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs"
   }
 }

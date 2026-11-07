@@ -5,7 +5,7 @@
  * sitemap entries, missing assets, invalid tag structure, inline executable
  * code, external resources, or a weak security header policy.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -449,7 +449,7 @@ if (cspLines.length === 0) {
 for (const [index, cspLine] of cspLines.entries()) {
   const csp = cspLine.slice(cspLine.indexOf(":") + 1).trim();
   const required = [
-    "default-src 'self'",
+    "default-src 'none'",
     "script-src 'self'",
     "style-src 'self'",
     "img-src 'self'",
@@ -491,6 +491,13 @@ for (const page of PAGES) {
   const html = read(page.file);
   if (/<img\b/i.test(html)) fail(`${page.file}: <img> is not allowed`);
   if (/<iframe\b/i.test(html)) fail(`${page.file}: <iframe> is not allowed`);
+}
+
+const distDir = join(ROOT, "dist");
+if (existsSync(distDir)) {
+  for (const forbidden of ["package.json", "README.md", "SECURITY.md", "LICENSE", "scripts"]) {
+    if (readdirSync(distDir).includes(forbidden)) fail(`dist/: leaked non-public file ${forbidden}`);
+  }
 }
 
 if (issues.length > 0) {
