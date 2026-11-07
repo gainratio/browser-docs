@@ -22,10 +22,4 @@ The check fails on missing metadata, JSON-LD, sitemap entries, broken internal l
 
 ## Deploy
 
-Deploy the repository root as static files. On Cloudflare Pages:
-
-```sh
-npx wrangler pages deploy . --project-name browser-docs --branch main
-```
-
-The custom domain `browser.gainratio.com` should be attached to that Pages project. `_headers` supplies the security policy and asset caching.
+Deploy the repository root as static files, for example to Cloudflare Pages or any static host. The custom domain `browser.gainratio.com` should be attached to that deployment. `_headers` supplies the security policy and asset caching.

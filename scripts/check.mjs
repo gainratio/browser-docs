@@ -440,12 +440,13 @@ if (!robots.includes(`Sitemap: ${SITE}/sitemap.xml`)) fail("robots.txt sitemap")
 
 /* Security headers and caching. */
 const headers = read("_headers");
-const cspLine = headers
+const cspLines = headers
   .split(/\r?\n/)
-  .find((line) => line.trim().toLowerCase().startsWith("content-security-policy:"));
-if (!cspLine) {
+  .filter((line) => line.trim().toLowerCase().startsWith("content-security-policy:"));
+if (cspLines.length === 0) {
   fail("_headers missing Content-Security-Policy");
-} else {
+}
+for (const [index, cspLine] of cspLines.entries()) {
   const csp = cspLine.slice(cspLine.indexOf(":") + 1).trim();
   const required = [
     "default-src 'self'",
@@ -460,9 +461,9 @@ if (!cspLine) {
     "frame-ancestors 'none'",
   ];
   for (const directive of required) {
-    if (!csp.includes(directive)) fail(`CSP missing ${directive}`);
+    if (!csp.includes(directive)) fail(`CSP #${index + 1} missing ${directive}`);
   }
-  if (/unsafe-inline|unsafe-eval|\*/.test(csp)) fail("CSP is not strict");
+  if (/unsafe-inline|unsafe-eval|\*/.test(csp)) fail(`CSP #${index + 1} is not strict`);
 }
 for (const header of [
   "X-Content-Type-Options: nosniff",
