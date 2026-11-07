@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Documentation — install and use @gainratio/browser</title>
+<title>EdgeProc Browser documentation — install and use @gainratio/browser</title>
 <meta name="description" content="Install @gainratio/browser, sync a signed bundle in a Worker, verify with Ed25519, read files offline, and use the documented SQL, vector, and seal APIs.">
 <link rel="canonical" href="https://browser.gainratio.com/docs/">
 <meta name="robots" content="index,follow">
 <meta name="theme-color" content="#0f5f56">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Documentation — install and use @gainratio/browser">
+<meta property="og:title" content="EdgeProc Browser documentation — install and use @gainratio/browser">
 <meta property="og:description" content="Install, sync, verify, and read signed data in the browser. API, concepts, errors, browser support, and limits.">
 <meta property="og:url" content="https://browser.gainratio.com/docs/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="64x64">
 <link rel="stylesheet" href="/assets/site.css">
 <script type="application/ld+json">
 {
@@ -159,7 +160,7 @@ const result = await client.sync(bundleBaseUrl, pubkeyUrl, {
   expectedBundleId: "my-bundle",
   expectedChannel: "stable",
   wantedPaths: ["catalog_meta.json", "images/"],
-  onProgress: ({ phase }) =&gt; renderPhase(phase),
+  onProgress: ({ phase }) =&gt; console.log(phase),
 });
 
 const bytes = await client.readFile("catalog_meta.json"); // checked, or it throws

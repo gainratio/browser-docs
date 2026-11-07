@@ -6,7 +6,7 @@
   --line: #d8d3c6;
   --teal: #0f5f56;
   --teal-2: #0b4a43;
-  --amber: #9a5f14;
+  --amber: #965b10;
   --ok: #17663a;
   --bad: #a12a2a;
   --card: #fffdf8;
@@ -571,12 +571,10 @@ th code,
 
 .docs-body h2 {
   margin-top: 46px;
-  scroll-margin-top: 92px;
 }
 
 .docs-body h3 {
   margin-top: 28px;
-  scroll-margin-top: 92px;
 }
 
 .docs-body p,
@@ -726,10 +724,10 @@ ol.plain li + li {
   }
 
   .flow {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .flow-arrow:nth-of-type(3) {
+  .flow-arrow {
     display: none;
   }
 }
@@ -771,12 +769,9 @@ ol.plain li + li {
   }
 
   .flow-arrow {
+    display: block;
     transform: rotate(90deg);
     text-align: center;
-  }
-
-  .flow-arrow:nth-of-type(3) {
-    display: block;
   }
 
   .docs-body h2 {
@@ -840,11 +835,6 @@ ol.plain li + li {
     padding-left: 14px;
   }
 
-  .docs-body h2,
-  .docs-body h3 {
-    scroll-margin-top: 124px;
-  }
-
   pre {
     padding: 15px;
     font-size: 12px;
@@ -869,11 +859,6 @@ ol.plain li + li {
 @media (max-width: 360px) {
   html {
     scroll-padding-top: 152px;
-  }
-
-  .docs-body h2,
-  .docs-body h3 {
-    scroll-margin-top: 152px;
   }
 }
 

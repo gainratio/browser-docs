@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Examples — sync, verify, SQL, vectors, and seal</title>
+<title>EdgeProc Browser examples — sync, verify, SQL, vectors, seal</title>
 <meta name="description" content="Copyable examples for @gainratio/browser: Vite Worker sync, Node verification, key rotation, SQL and vector search, passphrase seal, and tamper detection.">
 <link rel="canonical" href="https://browser.gainratio.com/examples/">
 <meta name="robots" content="index,follow">
 <meta name="theme-color" content="#0f5f56">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Examples — sync, verify, SQL, vectors, and seal">
+<meta property="og:title" content="EdgeProc Browser examples — sync, verify, SQL, vectors, seal">
 <meta property="og:description" content="Copyable @gainratio/browser examples, taken from the project README and documentation.">
 <meta property="og:url" content="https://browser.gainratio.com/examples/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="64x64">
 <link rel="stylesheet" href="/assets/site.css">
 <script type="application/ld+json">
 {
@@ -80,17 +81,15 @@ import EdgeProcWorker from "./edgeproc.worker?worker";
 
 const client = new EngineClient(new EdgeProcWorker(), { idleTimeoutMs: 60_000 });
 const result = await client.sync("/bundle", "/public.key", {
-  expectedBundleId: "prices",
-  expectedChannel: "stable",
   wantedPaths: ["prices.json"],
-  onProgress: ({ phase }) =&gt; renderPhase(phase),
+  onProgress: ({ phase }) =&gt; console.log(phase),
 });
 
 const bytes = await client.readFile("prices.json");
 console.log(`verified ${result.version} (${result.chunksFetched} fetched, ${result.chunksReused} reused)`);
 console.log(new TextDecoder().decode(bytes));</code></pre>
     </div>
-    <p><code>expectedBundleId</code> and <code>expectedChannel</code> only work if the publisher signed them into the pointer. <code>undefined</code> skips a pin; <code>null</code> requires the field to be absent. With the README's quickstart those pins are not signed, so drop both options or publish with <code>--bind-identity --channel stable</code>.</p>
+    <p>Identity pins are optional and only work if the publisher signed them (<code>edgeproc publish --bind-identity --channel stable</code>). Add <code>expectedBundleId: "prices"</code> and <code>expectedChannel: "stable"</code> to the options when they are signed. <code>undefined</code> skips a pin; <code>null</code> requires the field to be absent.</p>
     <p>The first sync fetches the one data chunk. After that the checked copy is in OPFS:</p>
     <div class="code">
       <div class="code-head"><strong>console</strong><span>first run, then reload</span></div>
@@ -141,7 +140,7 @@ refused: IntegrityError: chunk 34fa454858ceada20cfa0cd5236eb70f90e1021ed3bd03a6c
       <div class="code-head"><strong>report the backend</strong><span>main thread</span></div>
       <pre><code>const result = await client.sync("/bundle", "/public.key");
 if (result.cacheBackend === "sqlite-memory") {
-  showNotice("Offline copy will not survive a reload in this browser.");
+  console.warn("Offline copy will not survive a reload in this browser.");
 }
 if ("reason" in result.cacheStorage) {
   console.warn(`memory cache: ${result.cacheStorage.reason}`);
@@ -156,7 +155,7 @@ try {
   await client.sync("/bundle", "/public.key", { cacheFallback: "none" });
 } catch (error) {
   if (error instanceof EngineStorageUnavailableError) {
-    showStorageBlocked(error.reason); // "opfs-unavailable" or "pool-in-use"
+    console.warn(`storage unavailable: ${error.reason}`); // "opfs-unavailable" or "pool-in-use"
   } else throw error;
 }</code></pre>
     </div>

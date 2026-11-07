@@ -10,7 +10,7 @@ Pages:
 - `security/index.html` — threat model, trust-root lifecycle, reporting
 - `404.html` — not found page (noindex)
 
-The site is plain HTML and CSS. It has no build step, no client-side JavaScript, no external fonts, scripts, images, or trackers. The only binary asset is the local `favicon.svg`.
+The site is plain HTML and CSS. It has no build step, no client-side JavaScript, no external fonts, scripts, images, or trackers. It uses local favicon assets only.
 
 ## Check
 
