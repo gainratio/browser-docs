@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examples — sync, verify, SQL, vectors, and seal</title>
+<meta name="description" content="Copyable examples for @gainratio/browser: Vite Worker sync, Node verification, key rotation, SQL and vector search, passphrase seal, and tamper detection.">
+<link rel="canonical" href="https://browser.gainratio.com/examples/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0f5f56">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Examples — sync, verify, SQL, vectors, and seal">
+<meta property="og:description" content="Copyable @gainratio/browser examples, taken from the project README and documentation.">
+<meta property="og:url" content="https://browser.gainratio.com/examples/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "EdgeProc Browser examples",
+  "description": "Vite Worker sync, Node verification, key rotation, SQL, vectors, seal, and tamper detection examples.",
+  "url": "https://browser.gainratio.com/examples/",
+  "author": { "@type": "Organization", "name": "GainRatio" },
+  "isPartOf": {
+    "@type": "SoftwareSourceCode",
+    "name": "@gainratio/browser",
+    "url": "https://browser.gainratio.com/"
+  }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">B</span> EdgeProc Browser</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/examples/" aria-current="page">Examples</a>
+      <a href="/security/">Security</a>
+      <a href="https://github.com/gainratio/edgeproc-browser">GitHub ↗</a>
+      <a class="nav-cta" href="/docs/#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap docs-layout">
+  <aside class="docs-nav" aria-label="Examples">
+    <p class="docs-nav-title">Examples</p>
+    <a href="#vite">Vite sync</a>
+    <a href="#core">Node verification</a>
+    <a href="#cache">Cache fallback</a>
+    <a href="#keyring">Key rotation</a>
+    <a href="#sql">SQL</a>
+    <a href="#vector">Vectors</a>
+    <a href="#seal">Seal</a>
+    <a href="#tamper">Tamper detection</a>
+    <a href="#next">Next</a>
+  </aside>
+
+  <div class="docs-body">
+    <p class="eyebrow">Examples</p>
+    <h1>Copy, run, verify.</h1>
+    <p class="lede">Every example below is taken from the project README or documentation. The browser examples assume the bundle and public key produced by the quickstart. The expected output is the output the project tests, not an illustration.</p>
+
+    <div class="note"><strong>Before you copy:</strong> the bundle and the public key are separate installs. The bundle comes from <code>edgeproc publish</code>; the public key must be served from your own origin over HTTPS. Keep the private signing key off the web server.</div>
+
+    <h2 id="vite">Vite: sync a signed bundle in a Worker</h2>
+    <p>Keep the Worker entry in your own source so Vite owns its URL. This is the documented Vite setup.</p>
+    <div class="code">
+      <div class="code-head"><strong>src/edgeproc.worker.ts</strong><span>Worker entry</span></div>
+      <pre><code>import "@gainratio/browser/worker";</code></pre>
+    </div>
+    <div class="code">
+      <div class="code-head"><strong>src/main.ts</strong><span>main thread</span></div>
+      <pre><code>import { EngineClient } from "@gainratio/browser";
+import EdgeProcWorker from "./edgeproc.worker?worker";
+
+const client = new EngineClient(new EdgeProcWorker(), { idleTimeoutMs: 60_000 });
+const result = await client.sync("/bundle", "/public.key", {
+  expectedBundleId: "prices",
+  expectedChannel: "stable",
+  wantedPaths: ["prices.json"],
+  onProgress: ({ phase }) =&gt; renderPhase(phase),
+});
+
+const bytes = await client.readFile("prices.json");
+console.log(`verified ${result.version} (${result.chunksFetched} fetched, ${result.chunksReused} reused)`);
+console.log(new TextDecoder().decode(bytes));</code></pre>
+    </div>
+    <p><code>expectedBundleId</code> and <code>expectedChannel</code> only work if the publisher signed them into the pointer. <code>undefined</code> skips a pin; <code>null</code> requires the field to be absent. With the README's quickstart those pins are not signed, so drop both options or publish with <code>--bind-identity --channel stable</code>.</p>
+    <p>The first sync fetches the one data chunk. After that the checked copy is in OPFS:</p>
+    <div class="code">
+      <div class="code-head"><strong>console</strong><span>first run, then reload</span></div>
+      <pre><code>verified v1 (1 fetched, 0 reused)
+{"sku": "A-100", "name": "Blue mug", "price": 12.5}
+
+verified v1 (0 fetched, 1 reused)
+{"sku": "A-100", "name": "Blue mug", "price": 12.5}</code></pre>
+    </div>
+
+    <h2 id="core">Node: the same check without a browser</h2>
+    <p><code>syncIndex</code> is the checking logic without the Worker. You inject the transport, so the example provably makes no network calls. This is the README's <code>check.mjs</code>; save it in the project that has <code>public/bundle</code> and <code>public/public.key</code> and run <code>node check.mjs</code>.</p>
+    <div class="code">
+      <div class="code-head"><strong>check.mjs</strong><span>Node 22.13 or newer</span></div>
+      <pre><code>import { readFile } from "node:fs/promises";
+import { MemoryCacheStore, materializeFile, syncIndex, verifyEd25519 } from "@gainratio/browser";
+
+const key = new Uint8Array(await readFile("public/public.key"));
+const verify = (message, signature) =&gt; verifyEd25519(key, message, signature);
+// Stands in for a web server: "/bundle/latest" is read from public/bundle/latest.
+const server = async (url) =&gt; new Uint8Array(await readFile(`public${url}`));
+// A bad mirror: flips one byte in every data chunk it serves.
+const tampered = async (url) =&gt; {
+  const bytes = await server(url);
+  if (url.includes("/chunk/")) bytes[9] ^= 1;
+  return bytes;
+};
+
+const store = new MemoryCacheStore();
+const ok = await syncIndex({ baseUrl: "/bundle", store, fetchBytes: server, verify });
+const manifest = JSON.parse(new TextDecoder().decode(await store.getManifest(ok.manifestHash)));
+const bytes = await materializeFile(store, manifest, "prices.json");
+console.log(`accepted ${ok.version}: ${new TextDecoder().decode(bytes).trim()}`);
+
+await syncIndex({ baseUrl: "/bundle", store: new MemoryCacheStore(), fetchBytes: tampered, verify })
+  .catch((error) =&gt; console.log(`refused: ${error.name}: ${error.message}`));</code></pre>
+    </div>
+    <div class="code">
+      <div class="code-head"><strong>output</strong><span>unchanged, then tampered</span></div>
+      <pre><code>accepted v1: {"sku": "A-100", "name": "Blue mug", "price": 12.5}
+refused: IntegrityError: chunk 34fa454858ceada20cfa0cd5236eb70f90e1021ed3bd03a6c9d5332597b3cc12 failed content-address check</code></pre>
+    </div>
+    <p>The repository's <code>pnpm demo</code> runs the same shape against a real committed 783-chunk fixture. It also proves a second sync over a filled store fetches no chunks, and that one bit flipped in the pinned key gives <code>SignatureError</code>.</p>
+
+    <h2 id="cache">Cache fallback: say what the browser did</h2>
+    <p>Every sync result says where the checked chunks are kept. A memory backend is a warning, not a silent downgrade.</p>
+    <div class="code">
+      <div class="code-head"><strong>report the backend</strong><span>main thread</span></div>
+      <pre><code>const result = await client.sync("/bundle", "/public.key");
+if (result.cacheBackend === "sqlite-memory") {
+  showNotice("Offline copy will not survive a reload in this browser.");
+}
+if ("reason" in result.cacheStorage) {
+  console.warn(`memory cache: ${result.cacheStorage.reason}`);
+}</code></pre>
+    </div>
+    <p>If your app must not run without persistent storage, refuse the fallback. When OPFS cannot be opened, the Worker then downloads nothing and rejects at once:</p>
+    <div class="code">
+      <div class="code-head"><strong>fail closed</strong><span>no in-memory cache</span></div>
+      <pre><code>import { EngineStorageUnavailableError } from "@gainratio/browser";
+
+try {
+  await client.sync("/bundle", "/public.key", { cacheFallback: "none" });
+} catch (error) {
+  if (error instanceof EngineStorageUnavailableError) {
+    showStorageBlocked(error.reason); // "opfs-unavailable" or "pool-in-use"
+  } else throw error;
+}</code></pre>
+    </div>
+    <p>The Worker's first call fixes its <code>cacheFallback</code>; a later call with a different value is refused. If <code>readFile</code> can be the first call, pass the same option there.</p>
+
+    <h2 id="keyring">Key rotation: two keys, then revoke the old one</h2>
+    <p>The trust-root URL serves either exactly 32 bytes (a raw Ed25519 key) or a strict <code>edgeproc.keyring/v1</code> JSON keyring. A keyring lets you rotate without breaking clients that still hold an old cache.</p>
+    <div class="code">
+      <div class="code-head"><strong>public.key</strong><span>keyring form</span></div>
+      <pre><code>{
+  "schema": "edgeproc.keyring/v1",
+  "keys": [
+    { "key_id": "34750f98bd59fcfc", "public_key": "8a88e3dd…6f5c" },
+    { "key_id": "6a3803d5f059902a", "public_key": "8139770e…b394" }
+  ],
+  "revoked": []
+}</code></pre>
+    </div>
+    <div class="code">
+      <div class="code-head"><strong>load and verify</strong><span>core helpers</span></div>
+      <pre><code>import { loadTrustRoot, verifyWithKeyring } from "@gainratio/browser";
+
+const keyring = await loadTrustRoot("/public.key", fetchBytes);
+await verifyWithKeyring(keyring, message, signatureBase64, keyId);</code></pre>
+    </div>
+    <p>To rotate: publish a keyring with both keys, sign the next pointer with the new key at a higher <code>sequence</code>, then revoke the old key. <code>key_id</code> is the first 16 lowercase hex characters of the SHA-256 of the raw 32-byte key (<code>deriveKeyId</code>). The last promoted pointer stays the rollback floor throughout, so a key change never lets an older release back in.</p>
+
+    <h2 id="sql">SQL: FTS5, JSON1, and vectors in one database</h2>
+    <p><code>openSqlDatabase</code> opens a real SQLite database in the library's Worker, on OPFS, with FTS5, JSON1, and sqlite-vector on the same connection. Typed arrays such as <code>Float32Array</code> are bound as raw bytes, the BLOB layout sqlite-vector reads.</p>
+    <div class="code">
+      <div class="code-head"><strong>FTS5 quickstart</strong><span>@gainratio/browser/sql</span></div>
+      <pre><code>import { openSqlDatabase } from "@gainratio/browser/sql";
+
+const db = await openSqlDatabase({ name: "notes" });
+await db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(body)");
+await db.executeMany("INSERT INTO notes(body) VALUES (?)", [["buy milk"], ["call mum"]]);
+const hits = await db.query("SELECT body FROM notes WHERE notes MATCH ? ORDER BY bm25(notes)", ["milk"]);
+await db.close();</code></pre>
+    </div>
+    <p>The persistent database uses the OPFS <code>opfs-sahpool</code> VFS, so one tab owns it; a second tab gets a clear open error after a bounded retry. <code>fallback: "memory"</code> is opt-in and suits only small data you rebuild on every boot. Without it, an unavailable pool fails closed.</p>
+
+    <h2 id="vector">Vectors: exact cosine, stored in SQLite</h2>
+    <p>Search is exact FLOAT32 cosine distance; filters are parameterized equality checks ANDed together. This example keeps the index in SQLite in OPFS. For small data, <code>FlatVectorIndex</code> uses the same contract without WASM startup.</p>
+    <div class="code">
+      <div class="code-head"><strong>vector index</strong><span>@gainratio/browser/vector/sqlite</span></div>
+      <pre><code>import { createSqliteVectorIndex } from "@gainratio/browser/vector/sqlite";
+
+const index = await createSqliteVectorIndex({ name: "my-catalog", dimension: 384 });
+await index.insert([{ id: "sku-1", vector: embedding, metadata: { tenant: "a" } }]);
+const nearest = await index.search(query, 10, { tenant: "a" });
+const candidates = await index.searchByIds(query, candidateIds); // one exact batch score
+await index.deleteWhere({ tenant: "a" }); // needs a non-empty metadata filter
+await index.clear(); // returns the exact count; removes every local vector
+await index.dispose();</code></pre>
+    </div>
+    <p>One index has one owner: a second tab gets a clear open error after a bounded retry. The same SQLite runtime is available in Node through <code>createNodeSqliteVectorIndex</code>, in memory by design.</p>
+
+    <h2 id="seal">Seal: passphrase-encrypted files in the age format</h2>
+    <p><code>@gainratio/browser/seal</code> writes standard age v1 files. A user can open one without your app with <code>age -d backup.age &gt; backup.sqlite</code>. Seal and open take whole <code>Uint8Array</code>s; there is no streaming and no public-key recipient mode.</p>
+    <div class="code">
+      <div class="code-head"><strong>seal a backup</strong><span>run in a Worker</span></div>
+      <pre><code>import { checkNewPassphrase, openWithPassphrase, sealWithPassphrase } from "@gainratio/browser/seal";
+
+const check = checkNewPassphrase(passphrase, confirmation);
+if (!check.ok) throw new Error(check.reason); // "empty" | "too_short" | "mismatch"
+
+const sealed = await sealWithPassphrase(bytes, passphrase);
+if (!sealed.ok) throw new Error(sealed.reason);
+
+const opened = await openWithPassphrase(sealed.bytes, passphrase);
+if (!opened.ok) throw new Error(opened.reason);</code></pre>
+    </div>
+    <p>scrypt is synchronous: at the default work factor 17 it holds 128 MiB and blocks its thread for about half a second. Run it in a Worker. Passing <code>workFactor</code> changes the cost (10 to 20); opening refuses work factors above 18 by default with <code>too_costly</code>, before any scrypt runs. Pass <code>maxWorkFactor: 20</code> for files written by tools that pick a higher factor.</p>
+
+    <h2 id="tamper">Tamper detection in a real browser</h2>
+    <p>After the quickstart has cached the bundle, flip one byte of the first stored data piece. Open the page in a new private window, because the normal window already holds the checked copy and will not download that piece again.</p>
+    <div class="code">
+      <div class="code-head"><strong>tamper.sh</strong><span>one byte</span></div>
+      <pre><code>node -e "const fs=require('fs'),d='public/bundle/chunk/',p=d+fs.readdirSync(d)[0],b=fs.readFileSync(p);b[9]^=1;fs.writeFileSync(p,b)"</code></pre>
+    </div>
+    <p>The page refuses the data instead of showing it:</p>
+    <div class="code">
+      <div class="code-head"><strong>console</strong><span>refused</span></div>
+      <pre><code>refused (integrity): chunk 34fa454858ceada20cfa0cd5236eb70f90e1021ed3bd03a6c9d5332597b3cc12 failed content-address check</code></pre>
+    </div>
+    <p>Run the same line once more to undo the change. This is the README's test: a changed chunk fails its content-address check; it is not served with a warning.</p>
+
+    <h2 id="next">More</h2>
+    <ul class="plain">
+      <li><a href="/docs/">Documentation</a>: install, concepts, API, errors, browser support, and limits.</li>
+      <li><a href="/security/">Security</a>: threat model, trust-root lifecycle, and reporting.</li>
+      <li><a href="https://github.com/gainratio/edgeproc-browser/tree/main/examples">The repository's examples directory</a>, including <code>examples/quickstart.mjs</code>, the source of the Node pattern above.</li>
+      <li><a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/API.md">The full API guide</a> and <a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/sql.md">SQL guide</a>.</li>
+    </ul>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <span>© 2026 GainRatio · <a href="https://gainratio.com/">gainratio.com</a></span>
+    <span><a href="https://github.com/gainratio/edgeproc-browser">GitHub</a> · <a href="https://www.npmjs.com/package/@gainratio/browser">npm</a> · <a href="https://open-source.gainratio.com/">Open source</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/LICENSE">MIT</a></span>
+  </div>
+</footer>
+</body>
+</html>

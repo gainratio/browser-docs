@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — install and use @gainratio/browser</title>
+<meta name="description" content="Install @gainratio/browser, sync a signed bundle in a Worker, verify with Ed25519, read files offline, and use the documented SQL, vector, and seal APIs.">
+<link rel="canonical" href="https://browser.gainratio.com/docs/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0f5f56">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Documentation — install and use @gainratio/browser">
+<meta property="og:description" content="Install, sync, verify, and read signed data in the browser. API, concepts, errors, browser support, and limits.">
+<meta property="og:url" content="https://browser.gainratio.com/docs/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "EdgeProc Browser documentation",
+  "description": "Install @gainratio/browser, sync a signed bundle, verify signatures and content addresses, and read checked files offline.",
+  "url": "https://browser.gainratio.com/docs/",
+  "author": { "@type": "Organization", "name": "GainRatio" },
+  "isPartOf": {
+    "@type": "SoftwareSourceCode",
+    "name": "@gainratio/browser",
+    "url": "https://browser.gainratio.com/"
+  }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">B</span> EdgeProc Browser</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/docs/" aria-current="page">Docs</a>
+      <a href="/examples/">Examples</a>
+      <a href="/security/">Security</a>
+      <a href="https://github.com/gainratio/edgeproc-browser">GitHub ↗</a>
+      <a class="nav-cta" href="#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap docs-layout">
+  <aside class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <a href="#install">Install</a>
+    <a href="#concepts">Concepts</a>
+    <a href="#api">API</a>
+    <a href="#worker">Worker sync</a>
+    <a href="#core">Verify core</a>
+    <a href="#keyring">Keyrings</a>
+    <a href="#sql">SQL</a>
+    <a href="#vector">Vectors</a>
+    <a href="#seal">Seal</a>
+    <a href="#errors">Errors</a>
+    <a href="#browsers">Browsers</a>
+    <a href="#limits">Limits</a>
+    <a href="#next">Next</a>
+  </aside>
+
+  <div class="docs-body">
+    <p class="eyebrow">Documentation</p>
+    <h1>Install, sync, verify, read.</h1>
+    <p class="lede">This page covers the documented browser path: install <code>@gainratio/browser</code>, sync a signed bundle in a Worker, verify it, and read the checked bytes. It also covers the documented verification core, keyrings, SQL, vectors, seal, errors, browser support, and limits.</p>
+
+    <h2 id="install">Install</h2>
+    <p>The package is <code>@gainratio/browser</code>, currently version 0.4.4. It is MIT licensed and published with npm provenance from CI. The old name <code>@edgeproc/browser</code> is deprecated.</p>
+    <pre><code>npm install @gainratio/browser</code></pre>
+    <p>pnpm and Bun work too. To pin an exact commit instead of a release, <code>pnpm add github:gainratio/edgeproc-browser#&lt;commit-sha&gt;</code> is documented by the project.</p>
+
+    <h3>What you need</h3>
+    <ul class="plain">
+      <li><strong>For the page:</strong> a bundler. The documented setup uses Vite. The root <code>EngineClient</code> export contains no Worker URL; your own Worker file imports <code>@gainratio/browser/worker</code> so the bundler owns the URL.</li>
+      <li><strong>For publishing:</strong> Node 22.13 or newer, and <a href="https://docs.astral.sh/uv/">uv</a> to run the Python <code>edge-proc</code> CLI. The package checks bundles; it does not make them.</li>
+      <li><strong>For persistence:</strong> a browser with OPFS. If OPFS is refused, the Worker uses an in-memory SQLite database for its life and re-downloads next session.</li>
+    </ul>
+
+    <h3>Publish the bundle</h3>
+    <p>Install the Python CLI with the <code>bundles</code> extra. <code>--sequence</code> is required: the browser refuses a pointer without a non-negative sequence and uses it to refuse rollbacks. Keep <code>private.key</code> secret and off the web server; serve <code>public.key</code> from your own origin over HTTPS.</p>
+    <pre><code>uvx --from 'edge-proc[bundles]' edgeproc keygen --out keys
+uvx --from 'edge-proc[bundles]' edgeproc publish --src data --origin-dir public/bundle \
+  --key keys/private.key --bundle-id prices --version v1 --sequence 1</code></pre>
+    <p>The folder is ordinary static files: a signed pointer at <code>latest</code>, manifests under <code>manifest/</code>, and zstd-compressed chunks under <code>chunk/</code>. Any static web server or CDN can serve it.</p>
+
+    <h3>Add the Worker</h3>
+    <p>Create your own Worker entry. With Vite:</p>
+    <div class="code">
+      <div class="code-head"><strong>src/edgeproc.worker.ts</strong><span>Worker entry</span></div>
+      <pre><code>import "@gainratio/browser/worker";</code></pre>
+    </div>
+    <p>Without a bundler, use the separate spawn helper from <code>@gainratio/browser/spawn</code>:</p>
+    <pre><code>import { spawnEngineClient } from "@gainratio/browser/spawn";
+
+const client = spawnEngineClient({ idleTimeoutMs: 60_000 });</code></pre>
+    <p>The unbundled path exists because the root <code>EngineClient</code> export contains no Worker URL, so Vite does not emit a second, unused Worker next to yours. The project's Vite consumer test proves exactly one engine Worker is emitted.</p>
+
+    <h2 id="concepts">Concepts</h2>
+    <p>A published bundle is a content-addressed set of files plus one signature. The browser's job is to authenticate the signature, then prove every byte by hash before your app can read it.</p>
+    <pre><code>origin/
+  latest                 signed pointer: manifest hash, version, sequence, signature
+  manifest/&lt;sha256&gt;      the file list, addressed by its own hash
+  chunk/&lt;sha256&gt;         zstd-compressed pieces, addressed by the hash of their contents</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Term</th><th scope="col">What it means</th></tr></thead>
+        <tbody>
+          <tr><td>Pointer</td><td>The small signed file at <code>latest</code>. It names the manifest hash, version, sequence, and optional signed identity, key id, and expiry.</td></tr>
+          <tr><td>Manifest</td><td>The signed release's file list. It is fetched by its SHA-256 and lists each file's path, size, file hash, and chunk references.</td></tr>
+          <tr><td>Chunk</td><td>A zstd-compressed piece named by the SHA-256 of its plaintext. The Worker verifies its size and hash after a bounded decompression.</td></tr>
+          <tr><td>Sequence</td><td>A monotonic counter on the pointer. A lower sequence is a rollback; the same sequence with a different signed pointer is a fork. Both are refused.</td></tr>
+          <tr><td>Trust root</td><td>The public-key URL. It serves either exactly 32 bytes (a raw Ed25519 public key) or a strict <code>edgeproc.keyring/v1</code> JSON keyring.</td></tr>
+          <tr><td>Cache</td><td>One SQLite database named <code>${cacheNamespace}-chunks</code>, on OPFS when available, otherwise in memory. It holds chunks, manifests, the active pointer, and the rollback floor.</td></tr>
+          <tr><td>Promotion</td><td>The single transaction that makes a checked release active. It refuses unless every chunk the release needs is present and the floor does not go backwards.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The Worker fetches the trust root with no HTTP-cache reuse, capped at 64 KiB. It verifies the pointer's Ed25519 signature over canonical JSON bytes, refuses a lower or forked sequence, fetches the manifest and checks it against the hash the pointer named, then fetches only missing chunks. Only when everything passes does the new version replace the old one. Any failure throws a typed error, and the previous good version stays.</p>
+
+    <div class="note"><strong>What about a bundle that contains SQLite?</strong> If the bundle includes a <code>.sqlite</code> database (for example a product catalog or reference dataset), the Worker can open that verified file in OPFS with full-text search, JSON1, and vector search. The documented <code>/sql</code>, <code>/sqlite</code>, <code>/vector</code>, and <code>/vector/sqlite</code> paths are separate APIs over the same pinned SQLite build; they are not required for bundle verification.</div>
+
+    <h2 id="api">API</h2>
+    <p>There are no environment variables or config files. Everything is an argument. The root entry gives you the Worker client, the checking core, errors, keyring helpers, and the network-monitor channel.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Import</th><th scope="col">What it gives you</th></tr></thead>
+        <tbody>
+          <tr><td><code>@gainratio/browser</code></td><td><code>EngineClient</code>, <code>syncIndex</code>, <code>MemoryCacheStore</code>, <code>materializeFile</code>, <code>verifyEd25519</code>, keyring helpers, error classes, and the network monitor channel.</td></tr>
+          <tr><td><code>@gainratio/browser/worker</code></td><td>The Worker entry. Import it from your own worker file.</td></tr>
+          <tr><td><code>@gainratio/browser/spawn</code></td><td><code>spawnEngineClient()</code> for unbundled browser ESM.</td></tr>
+          <tr><td><code>@gainratio/browser/vector</code></td><td><code>FlatVectorIndex</code> and <code>PackedVectorIndex</code>, exact in-memory similarity search.</td></tr>
+          <tr><td><code>@gainratio/browser/vector/sqlite</code></td><td><code>createSqliteVectorIndex</code>, a vector index kept in SQLite in OPFS.</td></tr>
+          <tr><td><code>@gainratio/browser/vector/sqlite/node</code></td><td><code>createNodeSqliteVectorIndex</code>, the same SQLite runtime in Node, in memory.</td></tr>
+          <tr><td><code>@gainratio/browser/sqlite</code></td><td><code>createSqliteStateStore</code>, app state in one real SQLite file.</td></tr>
+          <tr><td><code>@gainratio/browser/sql</code></td><td><code>openSqlDatabase</code>, your own SQL with FTS5, JSON1, and vectors in one database.</td></tr>
+          <tr><td><code>@gainratio/browser/sql/node</code></td><td><code>openNodeSqlDatabase</code> for the same SQLite runtime in Node tests.</td></tr>
+          <tr><td><code>@gainratio/browser/seal</code></td><td>Passphrase-encrypted files in the standard age format.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="worker">Sync in a Worker</h3>
+    <p>The main-thread client sends typed requests to the Worker. Every result says where the checked chunks live.</p>
+    <div class="code">
+      <div class="code-head"><strong>main thread</strong><span>Vite setup</span></div>
+      <pre><code>import { EngineClient } from "@gainratio/browser";
+import EdgeProcWorker from "./edgeproc.worker?worker";
+
+const client = new EngineClient(new EdgeProcWorker(), { idleTimeoutMs: 60_000 });
+const result = await client.sync(bundleBaseUrl, pubkeyUrl, {
+  expectedBundleId: "my-bundle",
+  expectedChannel: "stable",
+  wantedPaths: ["catalog_meta.json", "images/"],
+  onProgress: ({ phase }) =&gt; renderPhase(phase),
+});
+
+const bytes = await client.readFile("catalog_meta.json"); // checked, or it throws
+await client.clear(); // same cross-tab lock as sync and read</code></pre>
+    </div>
+
+    <p><code>sync()</code> takes the bundle base URL, the public-key URL, and options. <code>readFile(path, { cacheFallback? })</code> materializes a file from the active manifest. <code>clear(options?)</code> resets the cache namespace under the same lock as sync and read.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Option</th><th scope="col">Effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>expectedBundleId</code>, <code>expectedChannel</code></td><td>Identity pins. They only work if the publisher signed them into the pointer (<code>edgeproc publish --bind-identity --channel stable</code>). <code>undefined</code> skips a pin; <code>null</code> requires the field to be absent.</td></tr>
+          <tr><td><code>wantedPaths</code></td><td><code>undefined</code> syncs every signed file. <code>[]</code> checks and promotes only the pointer and manifest, so an app can inspect the catalog first and fetch a chosen directory later. Paths or <code>dir/</code> prefixes select a subset.</td></tr>
+          <tr><td><code>cacheNamespace</code></td><td>Names the cache: its SQLite database (<code>${cacheNamespace}-chunks</code>) and its cross-tab lock.</td></tr>
+          <tr><td><code>cacheFallback</code></td><td><code>"memory"</code> (default) caches in RAM and re-downloads next session when OPFS is refused. <code>"none"</code> downloads nothing and rejects with <code>EngineStorageUnavailableError</code>. The Worker's first call fixes this value.</td></tr>
+          <tr><td><code>indexedDbLayout</code></td><td>Only for a 0.2.x cache that kept its IndexedDB floor and chunks. Read once to migrate into SQLite, then deleted.</td></tr>
+          <tr><td><code>onProgress</code></td><td>Called per phase (<code>pointer</code>, <code>manifest</code>, <code>chunks</code>, <code>verify</code>, <code>promoted</code>), per network read during <code>chunks</code> (at most four times a second), per checked chunk, per verified file, and on a retried chunk.</td></tr>
+          <tr><td><code>idleTimeoutMs</code></td><td>On <code>new EngineClient(worker, options)</code>. How long a Worker may go without any progress before <code>WorkerTimeoutError</code>; default 60 s. Every progress event re-arms the clock.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>A sync result carries <code>version</code>, <code>manifestHash</code>, <code>chunksFetched</code>, <code>chunksReused</code>, and <code>bytesFetched</code>. It adds <code>cacheBackend</code> (<code>"sqlite-opfs"</code> or <code>"sqlite-memory"</code>) and <code>cacheStorage</code>, the typed status. The status is <code>{ persistence: "opfs", pool, file }</code> or <code>{ persistence: "memory", reason, detail }</code>, where the reason is <code>"opfs-unavailable"</code> or <code>"pool-in-use"</code>.</p>
+
+    <div class="code">
+      <div class="code-head"><strong>refusing the memory fallback</strong><span>fail closed</span></div>
+      <pre><code>import { EngineStorageUnavailableError } from "@gainratio/browser";
+
+try {
+  await client.sync("/bundle", "/public.key", { cacheFallback: "none" });
+} catch (error) {
+  if (error instanceof EngineStorageUnavailableError) {
+    showStorageBlocked(error.reason); // nothing was downloaded into RAM
+  } else throw error;
+}</code></pre>
+    </div>
+
+    <p><code>cacheFallback: "none"</code> rejects at once with <code>EngineStorageUnavailableError</code>, which is an <code>EngineOperationError</code> with <code>code: "storage"</code>. Its <code>reason</code> is <code>"opfs-unavailable"</code> or <code>"pool-in-use"</code>. If <code>readFile</code> can be the first call (a reload that reads before it syncs), pass the same <code>cacheFallback</code> there.</p>
+
+    <h3 id="core">Verify without a Worker, and in Node</h3>
+    <p><code>syncIndex</code> is the same checking logic without the Worker. You inject the transport, so it also runs in Node for tests and build scripts. Pass either <code>verify</code> (a single-key function) or <code>keyring</code>, not both. <code>now</code> injects the expiry clock in Unix seconds.</p>
+    <div class="code">
+      <div class="code-head"><strong>syncIndex</strong><span>checking core</span></div>
+      <pre><code>import { MemoryCacheStore, materializeFile, syncIndex, verifyEd25519 } from "@gainratio/browser";
+
+const key = new Uint8Array(await readFile("public/public.key"));
+const verify = (message, signature) =&gt; verifyEd25519(key, message, signature);
+const store = new MemoryCacheStore();
+const result = await syncIndex({ baseUrl: "/bundle", store, fetchBytes, verify });
+const manifest = JSON.parse(new TextDecoder().decode(await store.getManifest(result.manifestHash)));
+const bytes = await materializeFile(store, manifest, "prices.json");</code></pre>
+    </div>
+    <p>The documented primitives are:</p>
+    <ul class="plain">
+      <li><code>verifyEd25519(pubkeyRaw32, message, signatureBase64)</code> resolves on a valid signature and throws <code>SignatureError</code> otherwise.</li>
+      <li><code>loadTrustRoot(url, fetchBytes)</code> fetches and parses a trust root with no HTTP-cache reuse, capped at 64 KiB, and returns a <code>Keyring</code>.</li>
+      <li><code>parseTrustRoot(bytes)</code> parses a trust root you already have.</li>
+      <li><code>verifyWithKeyring(keyring, message, signatureBase64, keyId?)</code> verifies under the keyring, with revocation and optional key selection.</li>
+      <li><code>syncIndex({ baseUrl, store, fetchBytes, verify | keyring, now?, ... })</code> runs the pointer, manifest, chunk, and promotion state machine.</li>
+      <li><code>materializeFile(store, manifest, path)</code> reassembles and verifies one file from the store.</li>
+      <li><code>MemoryCacheStore</code> is the in-memory store used by tests and Node.</li>
+      <li><code>NETWORK_SENTINEL_CHANNEL</code> and <code>isNetworkSentinelReport</code> expose the Worker's own request report to the page.</li>
+    </ul>
+    <p>At runtime the package is browser-first: modules reference <code>BroadcastChannel</code>, <code>PerformanceObserver</code>, <code>navigator.storage</code>, and <code>WorkerGlobalScope</code>. It loads in Node and fails the moment it touches a browser global. The pure core (crypto, canonical JSON, integrity, zstd, and <code>sync</code> with <code>MemoryCacheStore</code>) runs anywhere.</p>
+
+    <h3 id="keyring">The trust root: one key or a keyring</h3>
+    <p><code>pubkeyUrl</code> is fetched with <code>no-store</code> and capped at 64 KiB. Its format is detected:</p>
+    <ul class="plain">
+      <li><strong>Exactly 32 bytes:</strong> a raw Ed25519 public key, treated as a keyring of one.</li>
+      <li><strong>Anything else:</strong> a strict JSON keyring.</li>
+    </ul>
+    <div class="code">
+      <div class="code-head"><strong>public.key</strong><span>edgeproc.keyring/v1</span></div>
+      <pre><code>{
+  "schema": "edgeproc.keyring/v1",
+  "keys": [
+    { "key_id": "34750f98bd59fcfc", "public_key": "8a88e3dd…6f5c" },
+    { "key_id": "6a3803d5f059902a", "public_key": "8139770e…b394" }
+  ],
+  "revoked": []
+}</code></pre>
+    </div>
+    <p><code>key_id</code> is the first 16 lowercase hex characters of the SHA-256 of the raw 32-byte public key (<code>deriveKeyId</code>) and must match its key. Unknown fields, duplicate ids, malformed hex, and a ring with no unrevoked key are rejected with <code>KeyringError</code>. The <code>edgeproc keyring</code> command builds these files.</p>
+    <p>A pointer may carry two optional signed fields. Both are left out of the signed bytes when absent, so older pointers still verify:</p>
+    <ul class="plain">
+      <li><code>key_id</code>: only that key may verify the pointer. A revoked id fails with <code>KeyRevokedError</code>; an unlisted one fails with <code>UnknownKeyError</code>. Without <code>key_id</code>, any unrevoked key may verify; a revoked key never does.</li>
+      <li><code>expires_at</code>: Unix seconds. A pointer fetched from the network at or past its deadline fails with <code>PointerExpiredError</code>. Offline, an expired pointer whose bundle is already cached and checked is still served, with <code>expired: true</code> on the result, so an offline app keeps working and can tell the user the data may be stale.</li>
+    </ul>
+    <p>To rotate keys: publish a keyring with both keys, sign the next pointer with the new key at a higher <code>sequence</code>, then revoke the old key. The last promoted pointer stays the rollback floor throughout. A key change never resets that floor, so an older release re-signed by a new key is still refused as a rollback.</p>
+
+    <h2 id="sql">SQL in the browser</h2>
+    <p><code>@gainratio/browser/sql</code> opens a named SQLite database in the library's Worker, on OPFS, with FTS5, JSON1, and sqlite-vector on the same connection. It gives you typed <code>exec</code>, <code>query</code>, <code>transaction</code>, <code>executeMany</code>, and prepared statements. Typed arrays such as <code>Float32Array</code> are bound as raw bytes, the BLOB layout sqlite-vector reads.</p>
+    <div class="code">
+      <div class="code-head"><strong>FTS5</strong><span>@gainratio/browser/sql</span></div>
+      <pre><code>import { openSqlDatabase } from "@gainratio/browser/sql";
+
+const db = await openSqlDatabase({ name: "notes" });
+await db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(body)");
+await db.executeMany("INSERT INTO notes(body) VALUES (?)", [["buy milk"], ["call mum"]]);
+const hits = await db.query("SELECT body FROM notes WHERE notes MATCH ? ORDER BY bm25(notes)", ["milk"]);</code></pre>
+    </div>
+    <p>The pinned build is SQLite 3.53.4 with the Apache-2.0 sqlite-vector 1.1.2 extension statically linked into a 934,257-byte WASM file. It does not ship FAISS, an embedding model, or a backend. The persistent database uses the OPFS <code>opfs-sahpool</code> VFS, so one tab owns it; a second tab gets a clear open error after a bounded retry instead of silently sharing a file handle. <code>fallback: "memory"</code> is opt-in; without it, an unavailable pool fails closed.</p>
+
+    <h2 id="vector">Vectors</h2>
+    <p>The vector API is a small interface, not a ranking framework. Search is exact FLOAT32 cosine distance; filters are parameterized equality checks ANDed together. For small or throwaway data, <code>FlatVectorIndex</code> from <code>@gainratio/browser/vector</code> uses the same contract with no WASM startup. For an immutable FLOAT32 matrix that already came from a signed bundle, the synchronous <code>PackedVectorIndex</code> copies and validates the matrix and zeroes its storage on disposal.</p>
+    <div class="code">
+      <div class="code-head"><strong>SQLite vector index</strong><span>@gainratio/browser/vector/sqlite</span></div>
+      <pre><code>import { createSqliteVectorIndex } from "@gainratio/browser/vector/sqlite";
+
+const index = await createSqliteVectorIndex({ name: "my-catalog", dimension: 384 });
+await index.insert([{ id: "sku-1", vector: embedding, metadata: { tenant: "a" } }]);
+const nearest = await index.search(query, 10, { tenant: "a" });
+const candidates = await index.searchByIds(query, candidateIds); // one exact batch score
+await index.deleteWhere({ tenant: "a" }); // needs a non-empty metadata filter
+await index.clear(); // returns the exact count; removes every local vector
+await index.dispose();</code></pre>
+    </div>
+    <p>Persistent vector mode uses the OPFS SAH-pool VFS and runs in its own Worker. One index has one owner: a second tab gets a clear open error after a bounded retry. For a Node evaluation job that must use the same SQLite runtime, <code>createNodeSqliteVectorIndex</code> from <code>@gainratio/browser/vector/sqlite/node</code> is in memory by design.</p>
+
+    <h2 id="seal">Seal</h2>
+    <p><code>@gainratio/browser/seal</code> encrypts bytes with a passphrase into a standard age v1 file, opens it again, and can read older PBKDF2 + AES-GCM files. A user can also open a sealed file without your app with <code>age -d backup.age &gt; backup.sqlite</code>. <code>age-encryption</code> (about 53 KB gzipped) loads on the first seal or open; the main entry never loads it.</p>
+    <div class="code">
+      <div class="code-head"><strong>seal and open</strong><span>@gainratio/browser/seal</span></div>
+      <pre><code>import { checkNewPassphrase, openWithPassphrase, sealWithPassphrase } from "@gainratio/browser/seal";
+
+const check = checkNewPassphrase(passphrase, confirmation);
+if (!check.ok) throw new Error(check.reason); // "empty" | "too_short" | "mismatch"
+
+const sealed = await sealWithPassphrase(bytes, passphrase);
+if (!sealed.ok) throw new Error(sealed.reason);
+
+const opened = await openWithPassphrase(sealed.bytes, passphrase);
+if (!opened.ok) throw new Error(opened.reason);</code></pre>
+    </div>
+    <p>The default work factor is 17 (scrypt N = 2^17, 128 MiB), the OWASP floor; pass <code>workFactor</code> from 10 to 20 to change it. Opening refuses work factors above 18 by default with <code>too_costly</code>, before any scrypt runs; pass <code>maxWorkFactor: 20</code> for files written by tools that pick a higher factor. The default minimum passphrase length is 12 code points after NFC normalization. These functions return typed results and never throw for passphrase, format, memory, or availability failures. A wrong passphrase and a changed file both report <code>wrong_passphrase_or_tampered</code> on purpose. There are no public-key recipients, no streaming, and no passphrase strength scoring.</p>
+    <p>App state in one SQLite file is also documented, under <code>@gainratio/browser/sqlite</code>. Persistent state uses SQLite's official <code>opfs-wl</code> VFS and takes one exclusive per-store Web Lock, so several tabs and Workers take turns instead of failing. It needs a cross-origin-isolated page: serve <code>Cross-Origin-Opener-Policy: same-origin</code> and <code>Cross-Origin-Embedder-Policy: require-corp</code> (or <code>credentialless</code>). The rest of the package does not need those headers.</p>
+
+    <h2 id="errors">Every refusal and its error</h2>
+    <p>A network outage is the only condition that may serve cache, and it has its own type (<code>NetworkError</code>). Through the Worker, every keyring and expiry failure arrives as <code>EngineOperationError</code> with code <code>integrity</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Failure</th><th scope="col">Error</th></tr></thead>
+        <tbody>
+          <tr><td>Signature does not verify</td><td><code>SignatureError</code></td></tr>
+          <tr><td>Pointer names a revoked or unlisted signer</td><td><code>KeyRevokedError</code> / <code>UnknownKeyError</code> (both <code>SignatureError</code>)</td></tr>
+          <tr><td>Trust root is malformed</td><td><code>KeyringError</code> (an <code>IntegrityError</code>)</td></tr>
+          <tr><td>Network pointer is past its signed <code>expires_at</code></td><td><code>PointerExpiredError</code> (an <code>IntegrityError</code>)</td></tr>
+          <tr><td>Pointer has no non-negative <code>sequence</code></td><td><code>IntegrityError</code></td></tr>
+          <tr><td>Chunk hash does not match its content address</td><td><code>IntegrityError</code></td></tr>
+          <tr><td>Decompressed size does not match the signed size</td><td><code>IntegrityError</code></td></tr>
+          <tr><td>Response past its byte cap</td><td><code>ResponseTooLargeError</code> (an <code>IntegrityError</code>, so sync never falls back to cache for it)</td></tr>
+          <tr><td>Pointer sequence went backwards, or forked at equal sequence</td><td><code>RollbackError</code></td></tr>
+          <tr><td>Bundle exceeds a structural cap</td><td><code>SyncCapError</code></td></tr>
+          <tr><td>Worker died before replying</td><td><code>WorkerCrashError</code></td></tr>
+          <tr><td>Worker went silent</td><td><code>WorkerTimeoutError</code></td></tr>
+          <tr><td>Worker operation failed</td><td><code>EngineOperationError</code> with code <code>integrity</code>, <code>rollback</code>, <code>network</code>, <code>lock</code>, <code>storage</code>, or <code>internal</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Chunk transport failures classified as <code>NetworkError</code> get six bounded retries with exponential jitter, nine seconds maximum backoff. Integrity, signature, storage, and rollback failures are verdicts and are never retried. A chunk fetch that stalls for 30 s with no bytes is treated as a network failure and retried; chunks already verified and stored are never fetched again.</p>
+
+    <h2 id="browsers">Browser support</h2>
+    <p>This is an early release, and browser coverage is part of its limits. The project is explicit about what it tests:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Engine</th><th scope="col">What CI covers</th><th scope="col">Storage</th></tr></thead>
+        <tbody>
+          <tr><td>Chromium</td><td>The full browser suite, including OPFS, keyring trust roots, warm sync, SQLite state, vectors, and seal.</td><td>OPFS.</td></tr>
+          <tr><td>Firefox</td><td>One cross-browser test: OPFS open, memory fallback, a SQL round trip, export/import, memory-profile detection.</td><td>OPFS opens for real in the test.</td></tr>
+          <tr><td>WebKit (Playwright)</td><td>The same cross-browser test. Playwright's WebKit refuses the OPFS root, so the test checks the typed <code>opfs-unavailable</code> fallback, not OPFS itself.</td><td>In-memory fallback. Re-downloads next session.</td></tr>
+          <tr><td>Real Safari</td><td>Not tested.</td><td>Not known beyond the WebKit fallback.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The documented browser engine path uses a Web Worker; <code>syncIndex</code> is the Worker-free checking core. If OPFS is refused (Safari private mode or Playwright WebKit) or another context holds the pool for more than five seconds, the Worker uses one in-memory SQLite database for its life and reports <code>cacheBackend: "sqlite-memory"</code>. The in-memory rollback floor also lasts only for that Worker's life. Pass <code>cacheFallback: "none"</code> if your app must not run without persistent storage.</p>
+    <p>The chunk cache supports tabs taking turns: the engine Worker takes the namespace's cache Web Lock and the SQLite pool owner lock, runs queued work, then releases both. A Worker's first call fixes its <code>cacheFallback</code>; a later call with a different value is refused. The optional SQLite app-state store needs a cross-origin-isolated page; the rest of the package does not.</p>
+
+    <h2 id="limits">Key limits</h2>
+    <div class="grid-2">
+      <div>
+        <ul class="plain">
+          <li><strong>Pre-1.0.</strong> Only the latest published version gets fixes. 0.4.4 is current.</li>
+          <li><strong>The trust root is capped at 64 KiB</strong> and fetched with no HTTP-cache reuse.</li>
+          <li><strong>Idle timeout:</strong> 60 s by default. Any progress event re-arms it; a slow link is not a dead link.</li>
+          <li><strong>Stall window:</strong> 30 s with no bytes. A transfer that keeps delivering is never cut off, however slow.</li>
+          <li><strong>Retries:</strong> six bounded attempts for network-classified chunk failures, nine seconds maximum backoff.</li>
+          <li><strong>Progress:</strong> byte progress during <code>chunks</code> is rate-limited to four events a second; chunk completions and retries are always reported.</li>
+        </ul>
+      </div>
+      <div>
+        <ul class="plain">
+          <li><strong>Storage:</strong> one SQLite database per cache on OPFS, or an in-memory database. The cache never uses IndexedDB, except to read a 0.2.x cache once and migrate it.</li>
+          <li><strong>Names:</strong> the chunk database is <code>${cacheNamespace}-chunks</code>. Cache names and legacy layouts are local identifiers, not secrets.</li>
+          <li><strong>SQL/vectors:</strong> persistent mode is one owner per OPFS pool. The chunk cache is different: tabs take turns under Web Locks.</li>
+          <li><strong>No config:</strong> there are no environment variables or config files. Everything is an argument.</li>
+          <li><strong>No publisher:</strong> the package does not sign or publish. Use the Python <code>edgeproc</code> CLI.</li>
+          <li><strong>No meaning:</strong> it returns checked bytes, not parsed records, rankings, or recommendations.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="next">Next</h2>
+    <ul class="plain">
+      <li><a href="/examples/">Copyable examples</a> for Vite sync, Node verification, key rotation, SQL, vectors, seal, and tamper detection.</li>
+      <li><a href="/security/">Security and threat model</a>, including key rotation, revocation, expiry, and reporting.</li>
+      <li><a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/API.md">The full API guide</a>, <a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/ARCHITECTURE.md">architecture</a>, <a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/sql.md">SQL</a>, <a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/seal.md">seal</a>, and <a href="https://github.com/gainratio/edgeproc-browser/blob/main/SECURITY.md">SECURITY.md</a>.</li>
+    </ul>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <span>© 2026 GainRatio · <a href="https://gainratio.com/">gainratio.com</a></span>
+    <span><a href="https://github.com/gainratio/edgeproc-browser">GitHub</a> · <a href="https://www.npmjs.com/package/@gainratio/browser">npm</a> · <a href="https://open-source.gainratio.com/">Open source</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/LICENSE">MIT</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EdgeProc Browser — signed data, checked in the browser</title>
+<meta name="description" content="Have the browser check that downloaded data was signed by you and not changed, then keep it for offline use. Open source, MIT, Web Workers and OPFS.">
+<link rel="canonical" href="https://browser.gainratio.com/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0f5f56">
+<meta property="og:type" content="website">
+<meta property="og:title" content="EdgeProc Browser — signed data, checked in the browser">
+<meta property="og:description" content="Verify signed data in a Web Worker, refuse anything changed or rolled back, and keep the checked copy for offline use.">
+<meta property="og:url" content="https://browser.gainratio.com/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "@gainratio/browser",
+  "alternateName": "EdgeProc Browser",
+  "description": "A signed-bundle engine for the browser: verify Ed25519 signatures and SHA-256 content addresses in a Web Worker, then keep checked data for offline use.",
+  "codeRepository": "https://github.com/gainratio/edgeproc-browser",
+  "programmingLanguage": ["TypeScript", "JavaScript"],
+  "license": "https://opensource.org/license/mit",
+  "version": "0.4.4",
+  "url": "https://browser.gainratio.com/",
+  "sameAs": [
+    "https://github.com/gainratio/edgeproc-browser",
+    "https://www.npmjs.com/package/@gainratio/browser"
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">B</span> EdgeProc Browser</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/examples/">Examples</a>
+      <a href="/security/">Security</a>
+      <a href="https://github.com/gainratio/edgeproc-browser">GitHub ↗</a>
+      <a class="nav-cta" href="#quickstart">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-heading">
+    <div class="wrap">
+      <p class="eyebrow">Open source · TypeScript · MIT · v0.4.4</p>
+      <h1 id="hero-heading">Signed data, checked in the browser.</h1>
+      <p class="lede">Have the page check that downloaded data was signed by you and not changed, then keep it for offline use. <code>@gainratio/browser</code> verifies a signed bundle in a Web Worker before your app sees a byte.</p>
+      <div class="hero-actions">
+        <a class="btn" href="#quickstart">Install and sync a bundle</a>
+        <a class="btn secondary" href="/docs/">Read the docs</a>
+      </div>
+      <ul class="pill-row" aria-label="At a glance">
+        <li class="pill">Ed25519 signatures</li>
+        <li class="pill">SHA-256 content addresses</li>
+        <li class="pill">SQLite on OPFS</li>
+        <li class="pill">Typed refusals</li>
+        <li class="pill">0.4.4</li>
+      </ul>
+      <p class="small muted"><a href="https://github.com/gainratio/almamesh">AlmaMesh</a> uses it to download its chart engine.</p>
+    </div>
+  </section>
+
+  <section class="band" id="problem" aria-labelledby="problem-heading">
+    <div class="wrap">
+      <h2 id="problem-heading">The page trusts whatever the network sends.</h2>
+      <p class="muted">Many web apps download data files and work with them inside the page: a product catalog, a search index, a price list, a model. Usually the page trusts whatever the server or CDN sends back. If a mirror serves an old copy, or a file is changed or cut short on the way, the app uses it anyway and nobody notices.</p>
+      <div class="grid-2">
+        <div>
+          <h3>A checksum is not a signature</h3>
+          <p class="muted">A plain hash tells you a file changed. It does not tell you who released it. Anyone who can replace the file can replace the hash that came with it. HTTPS authenticates the connection, not the release your page meant to receive.</p>
+          <p class="muted">This package moves the check into the page. You sign the data once when you publish it. The page pins your public key, checks your signature and every piece, and refuses anything that does not match.</p>
+        </div>
+        <div class="card">
+          <span class="step">What changes</span>
+          <ul class="checks">
+            <li>The publisher signs one small pointer, not every download.</li>
+            <li>Each piece is named by the SHA-256 of its contents.</li>
+            <li>A sequence number can only move forward.</li>
+            <li>Any failure is a typed error, and the last good version stays.</li>
+            <li>Checked pieces are kept for the next visit and for offline use.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="how" aria-labelledby="how-heading">
+    <div class="wrap">
+      <h2 id="how-heading">A signed bundle, checked piece by piece.</h2>
+      <p class="muted">Publish a folder of static files. Your page hands the bundle URL and the public-key URL to a Worker. The Worker verifies the signed pointer, fetches only the pieces it is missing, and promotes the release only when every check passes.</p>
+
+      <ol class="flow" aria-label="How a signed bundle reaches the page">
+        <li class="flow-step"><strong>Publish</strong><span>A signed pointer, a file list, and zstd-compressed pieces.</span></li>
+        <li class="flow-arrow" aria-hidden="true">→</li>
+        <li class="flow-step"><strong>Fetch</strong><span>Pointer, manifest, and only the chunks not already stored.</span></li>
+        <li class="flow-arrow" aria-hidden="true">→</li>
+        <li class="flow-step"><strong>Check</strong><span>Ed25519 signature, then SHA-256 for every chunk and file.</span></li>
+        <li class="flow-arrow" aria-hidden="true">→</li>
+        <li class="flow-step"><strong>Promote</strong><span>One SQLite transaction replaces the active release.</span></li>
+      </ol>
+
+      <div class="grid-3">
+        <div class="card">
+          <span class="step">Signature first</span>
+          <h3>The pointer is authenticated</h3>
+          <p>The Worker fetches your public key or keyring with no HTTP-cache reuse, capped at 64 KiB, and checks the pointer's Ed25519 signature over canonical JSON bytes.</p>
+        </div>
+        <div class="card">
+          <span class="step">Content-addressed</span>
+          <h3>Every piece proves itself</h3>
+          <p>Each chunk is named by the SHA-256 of its contents. The Worker decompresses within a size bound, re-hashes, and deletes a bad row instead of serving it.</p>
+        </div>
+        <div class="card">
+          <span class="step">Rollback floor</span>
+          <h3>A sequence number can only go up</h3>
+          <p>A pointer whose sequence went backwards, or forked at the same sequence, is refused. The highest accepted sequence stays in storage as the floor.</p>
+        </div>
+        <div class="card">
+          <span class="step">Offline</span>
+          <h3>The next visit downloads only what changed</h3>
+          <p>Checked chunks live in one SQLite database on OPFS. If OPFS is refused, an in-memory database keeps the Worker alive for the session and re-downloads next time.</p>
+        </div>
+        <div class="card">
+          <span class="step">Fail closed</span>
+          <h3>Refused means refused</h3>
+          <p>A bad signature, a tampered chunk, a rolled-back pointer, or an expired network pointer throws a typed error. Nothing unchecked is returned with a warning.</p>
+        </div>
+        <div class="card">
+          <span class="step">Measurable</span>
+          <h3>Count the Worker's requests</h3>
+          <p>A monitor inside the Worker reports every request it made over a <code>BroadcastChannel</code>, so “no backend calls” can be counted instead of promised.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="quickstart" aria-labelledby="quickstart-heading">
+    <div class="wrap">
+      <p class="eyebrow">Quickstart</p>
+      <h2 id="quickstart-heading">From zero to a checked file in about a minute.</h2>
+      <p class="muted">You need Node 22.13 or newer, and <a href="https://docs.astral.sh/uv/">uv</a> to run the Python tool that signs the data. The commands below are the real quickstart, not a sketch.</p>
+
+      <div class="step-block">
+        <h3><span class="step">Step 1</span> Create the project</h3>
+        <p>The package and Vite are the page-side installs.</p>
+        <pre><code>mkdir signed-data-demo &amp;&amp; cd signed-data-demo
+npm init -y
+npm install @gainratio/browser vite</code></pre>
+      </div>
+
+      <div class="step-block">
+        <h3><span class="step">Step 2</span> Sign a folder of data</h3>
+        <p>The publisher is the Python <code>edge-proc</code> CLI, run through <code>uvx</code>. Keep the private key off the web server; copy only the public key into <code>public/</code>.</p>
+        <pre><code>mkdir data
+echo '{"sku": "A-100", "name": "Blue mug", "price": 12.5}' &gt; data/prices.json
+uvx --from 'edge-proc[bundles]' edgeproc keygen --out keys
+uvx --from 'edge-proc[bundles]' edgeproc publish --src data --origin-dir public/bundle \
+  --key keys/private.key --bundle-id prices --version v1 --sequence 1
+cp keys/public.key public/public.key</code></pre>
+        <div class="note"><strong>Always pass <code>--sequence</code>, and raise it every time you publish.</strong> The browser refuses a pointer without one and uses the number to refuse rollbacks. <code>public/bundle</code> now holds the signed pointer (<code>latest</code>), a file list (<code>manifest/</code>), and the data in pieces (<code>chunk/</code>).</div>
+      </div>
+
+      <div class="step-block">
+        <h3><span class="step">Step 3</span> Add the Worker</h3>
+        <p>Keep the Worker entry in your own source so Vite owns its URL.</p>
+        <div class="code">
+          <div class="code-head"><strong>edgeproc.worker.js</strong><span>Web Worker entry</span></div>
+          <pre><code>import "@gainratio/browser/worker";</code></pre>
+        </div>
+      </div>
+
+      <div class="step-block">
+        <h3><span class="step">Step 4</span> Sync and read the checked bytes</h3>
+        <p>The client asks the Worker to sync. Only after the signature and every piece pass does <code>readFile</code> return data.</p>
+        <div class="code">
+          <div class="code-head"><strong>main.js</strong><span>main thread</span></div>
+          <pre><code>import { EngineClient } from "@gainratio/browser";
+import EdgeProcWorker from "./edgeproc.worker.js?worker";
+
+const out = document.querySelector("#out");
+const client = new EngineClient(new EdgeProcWorker());
+try {
+  const result = await client.sync("/bundle", "/public.key");
+  const bytes = await client.readFile("prices.json");
+  out.textContent = `verified ${result.version} (${result.chunksFetched} fetched, ${result.chunksReused} reused)\n` +
+    new TextDecoder().decode(bytes);
+} catch (error) {
+  out.textContent = `refused (${error.code}): ${error.message}`;
+}</code></pre>
+        </div>
+        <div class="code">
+          <div class="code-head"><strong>index.html</strong><span>the page</span></div>
+          <pre><code>&lt;!doctype html&gt;
+&lt;h1&gt;Signed data check&lt;/h1&gt;
+&lt;pre id="out"&gt;checking...&lt;/pre&gt;
+&lt;script type="module" src="/main.js"&gt;&lt;/script&gt;</code></pre>
+        </div>
+      </div>
+
+      <div class="step-block">
+        <h3><span class="step">Step 5</span> Run it</h3>
+        <pre><code>npx vite</code></pre>
+        <p>Open <code>http://localhost:5173</code>. The page downloads the bundle, checks it, and shows the file:</p>
+        <pre><code>verified v1 (1 fetched, 0 reused)
+{"sku": "A-100", "name": "Blue mug", "price": 12.5}</code></pre>
+        <p>Reload the page. It now says <code>verified v1 (0 fetched, 1 reused)</code>: the checked copy is already in the browser, so nothing was downloaded again. In a new private window, change one byte of a stored data piece and the page refuses it with <code>refused (integrity): chunk ... failed content-address check</code>. The tamper command is in the <a href="/examples/#tamper">examples</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="example" aria-labelledby="example-heading">
+    <div class="wrap">
+      <p class="eyebrow">Copyable real example</p>
+      <h2 id="example-heading">The same check in Node, with the transport injected.</h2>
+      <p class="muted">The checking core also runs in Node. This is the README's <code>check.mjs</code>: the “server” reads local files, and the second run flips one byte in every piece it serves.</p>
+      <div class="code">
+        <div class="code-head"><strong>check.mjs</strong><span>run with node check.mjs</span></div>
+        <pre><code>import { readFile } from "node:fs/promises";
+import { MemoryCacheStore, materializeFile, syncIndex, verifyEd25519 } from "@gainratio/browser";
+
+const key = new Uint8Array(await readFile("public/public.key"));
+const verify = (message, signature) =&gt; verifyEd25519(key, message, signature);
+// Stands in for a web server: "/bundle/latest" is read from public/bundle/latest.
+const server = async (url) =&gt; new Uint8Array(await readFile(`public${url}`));
+// A bad mirror: flips one byte in every data chunk it serves.
+const tampered = async (url) =&gt; {
+  const bytes = await server(url);
+  if (url.includes("/chunk/")) bytes[9] ^= 1;
+  return bytes;
+};
+
+const store = new MemoryCacheStore();
+const ok = await syncIndex({ baseUrl: "/bundle", store, fetchBytes: server, verify });
+const manifest = JSON.parse(new TextDecoder().decode(await store.getManifest(ok.manifestHash)));
+const bytes = await materializeFile(store, manifest, "prices.json");
+console.log(`accepted ${ok.version}: ${new TextDecoder().decode(bytes).trim()}`);
+
+await syncIndex({ baseUrl: "/bundle", store: new MemoryCacheStore(), fetchBytes: tampered, verify })
+  .catch((error) =&gt; console.log(`refused: ${error.name}: ${error.message}`));</code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head"><strong>output</strong><span>expected</span></div>
+        <pre><code>accepted v1: {"sku": "A-100", "name": "Blue mug", "price": 12.5}
+refused: IntegrityError: chunk 34fa454858ceada20cfa0cd5236eb70f90e1021ed3bd03a6c9d5332597b3cc12 failed content-address check</code></pre>
+      </div>
+      <p class="small muted">The repository's <code>pnpm demo</code> runs a real committed 783-chunk fixture with no network and proves the same fail-closed behaviour.</p>
+      <div class="hero-actions"><a class="btn" href="/examples/">More copyable examples</a><a class="btn secondary" href="/docs/#api">API reference</a></div>
+    </div>
+  </section>
+
+  <section class="band" id="limits" aria-labelledby="limits-heading">
+    <div class="wrap">
+      <h2 id="limits-heading">What it does not do.</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>It is not a publisher</h3>
+          <p>It checks bundles; it does not sign or publish them. Today the publisher is the Python <code>edgeproc publish</code> command from <a href="https://github.com/gainratio/edge-proc">edge-proc</a>.</p>
+        </div>
+        <div class="card">
+          <h3>Data flows one way</h3>
+          <p>Publisher to browser. It does not sync user edits back to a server, and it has no backend of its own.</p>
+        </div>
+        <div class="card">
+          <h3>It does not know your data</h3>
+          <p>It hands your app checked bytes. What they mean, how to index them, and what to show the user are your decisions.</p>
+        </div>
+        <div class="card">
+          <h3>It is not confidentiality</h3>
+          <p>Signing proves integrity and signer identity, not secrecy. The bundle is plaintext bytes. The opt-in <code>/seal</code> export encrypts files separately with a passphrase.</p>
+        </div>
+        <div class="card">
+          <h3>It cannot protect a compromised page</h3>
+          <p>A malicious browser extension, or an attacker who controls your public-key URL, is out of reach. Serve the key over HTTPS from your own site, separately from mutable bundle content.</p>
+        </div>
+        <div class="card">
+          <h3>It is still pre-1.0</h3>
+          <p>0.4.4 is the current release. Chromium gets the full browser suite; Firefox and WebKit get a cross-browser test. Playwright's WebKit refuses OPFS, and real Safari is not tested.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="security" aria-labelledby="security-heading">
+    <div class="wrap grid-2">
+      <div>
+        <p class="eyebrow">Data handling</p>
+        <h2 id="security-heading">What stays in the browser.</h2>
+        <p class="muted">The public key is public. The private signing key never belongs in the browser. A sync's network traffic goes to the bundle URL and the public-key URL you configure; checked bytes are not sent back anywhere.</p>
+        <p class="muted">The cache is one SQLite database on OPFS, or an in-memory database when OPFS is refused. Every cached chunk is re-hashed on read, and a bad row is deleted rather than served. The stored active pointer is also the anti-rollback floor.</p>
+        <p class="muted">The package has no analytics and loads no code from a CDN. This site has no external fonts, scripts, trackers, or images.</p>
+        <div class="hero-actions"><a class="btn" href="/security/">Read the threat model</a><a class="btn secondary" href="https://github.com/gainratio/edgeproc-browser/blob/main/SECURITY.md">SECURITY.md</a></div>
+      </div>
+      <div class="card">
+        <span class="step">Trust boundaries</span>
+        <ul class="checks">
+          <li>Serve the public key or keyring from a URL you control, over HTTPS.</li>
+          <li>Host it apart from mutable bundle content.</li>
+          <li>Keep the private signing key on the publishing machine.</li>
+          <li>Pin the expected bundle and channel when the publisher signs them.</li>
+          <li>Treat Worker error messages as untrusted text, not HTML.</li>
+          <li>Do not put secrets in bundle paths or URLs.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band faq" id="faq" aria-labelledby="faq-heading">
+    <div class="wrap">
+      <h2 id="faq-heading">Questions</h2>
+      <h3>Do I need to change my server?</h3>
+      <p>No application server is required. The publisher writes a folder of static files (<code>latest</code>, <code>manifest/</code>, <code>chunk/</code>) and any static web server or CDN can serve it. Your page also needs the public key available over HTTPS.</p>
+      <h3>What happens if a CDN serves an old copy?</h3>
+      <p>The signed pointer carries a sequence number. A lower sequence, or a different pointer at the same sequence, is refused as a rollback, and the last good version stays. A changed chunk fails its content-address check. Neither condition is served with a warning.</p>
+      <h3>Does this replace HTTPS?</h3>
+      <p>No. HTTPS protects the connection; this package lets the page check the release itself. Use both. The public-key URL is a trust root, so serve it from somewhere you control, not from the same mutable mirror as the data.</p>
+      <h3>Does it replace Subresource Integrity or a service worker?</h3>
+      <p>SRI covers a few files whose hashes you put in the HTML at build time. A service-worker cache makes your app shell work offline. This package is for data bundles that change without redeploying the page, and want the page to refuse anything you did not sign.</p>
+      <h3>Can it run without a Web Worker?</h3>
+      <p>The supported browser path is a Worker. <code>syncIndex</code> is the same checking logic without the Worker, with the transport injected, so it also runs in Node for tests and build scripts.</p>
+      <h3>Does it encrypt the data?</h3>
+      <p>No. Signing proves integrity and signer identity, not confidentiality. If you need passphrase-encrypted files, the opt-in <code>@gainratio/browser/seal</code> export writes standard age files. It is separate from bundle verification.</p>
+      <h3>Which browsers work?</h3>
+      <p>Chromium runs the full browser suite. Firefox opens OPFS in CI. Playwright's WebKit refuses OPFS, so the cross-browser test checks the typed <code>opfs-unavailable</code> fallback there; real Safari is not tested. The <a href="/docs/#browsers">browser support notes</a> cover the rest.</p>
+      <h3>Is it production-ready?</h3>
+      <p>It is an early release. Only the latest published version gets fixes. <code>@gainratio/browser</code> releases publish from CI with npm provenance, and the exact-Git-commit build checks that a clean rebuild of <code>dist/</code> matches. See <a href="/security/#versions">supported versions</a>.</p>
+      <h3>How do I report a security issue?</h3>
+      <p>Use GitHub's private vulnerability reporting for the repository, or email with <code>SECURITY</code> in the subject. Do not open a public issue. Details are on the <a href="/security/#reporting">security page</a>.</p>
+    </div>
+  </section>
+
+  <section class="band alt" id="next" aria-labelledby="next-heading">
+    <div class="wrap">
+      <h2 id="next-heading">Read next</h2>
+      <div class="next-grid">
+        <div class="card">
+          <span class="step">Documentation</span>
+          <h3>Install, API, errors, limits</h3>
+          <p>The Worker setup, the checking core, keyrings, SQL, vectors, seal, browser support, and the refusal table.</p>
+          <p><a href="/docs/">Open the docs</a></p>
+        </div>
+        <div class="card">
+          <span class="step">Examples</span>
+          <h3>Copyable, runnable snippets</h3>
+          <p>Vite sync, Node verification, key rotation, cache fallback, SQL, vectors, seal, and tamper detection.</p>
+          <p><a href="/examples/">Browse examples</a></p>
+        </div>
+        <div class="card">
+          <span class="step">Security</span>
+          <h3>Threat model and reporting</h3>
+          <p>What is checked, what is refused, what is out of reach, key lifecycle, and how to report a vulnerability.</p>
+          <p><a href="/security/">Read security</a></p>
+        </div>
+      </div>
+      <hr class="rule">
+      <div class="footer-grid">
+        <p class="small muted">Package: <a href="https://www.npmjs.com/package/@gainratio/browser">@gainratio/browser</a> · Source: <a href="https://github.com/gainratio/edgeproc-browser">github.com/gainratio/edgeproc-browser</a></p>
+        <p class="small muted">Related: <a href="https://github.com/gainratio/edge-proc">edge-proc</a> · <a href="https://github.com/gainratio/almamesh">AlmaMesh</a> · <a href="https://open-source.gainratio.com/">GainRatio open source</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <span>© 2026 GainRatio · <a href="https://gainratio.com/">gainratio.com</a></span>
+    <span><a href="https://github.com/gainratio/edgeproc-browser">GitHub</a> · <a href="https://www.npmjs.com/package/@gainratio/browser">npm</a> · <a href="https://open-source.gainratio.com/">Open source</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/LICENSE">MIT</a></span>
+  </div>
+</footer>
+</body>
+</html>

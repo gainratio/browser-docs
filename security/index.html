@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security — threat model and vulnerability reporting</title>
+<meta name="description" content="What @gainratio/browser checks and refuses, its trust-root and key lifecycle, what it cannot protect, supported versions, and how to report a vulnerability.">
+<link rel="canonical" href="https://browser.gainratio.com/security/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0f5f56">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Security — threat model and vulnerability reporting">
+<meta property="og:description" content="What the package checks, what it refuses, what is out of reach, and how to report a vulnerability.">
+<meta property="og:url" content="https://browser.gainratio.com/security/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "EdgeProc Browser security",
+  "description": "Threat model, security boundaries, key lifecycle, supported versions, and vulnerability reporting for @gainratio/browser.",
+  "url": "https://browser.gainratio.com/security/",
+  "author": { "@type": "Organization", "name": "GainRatio" },
+  "isPartOf": {
+    "@type": "SoftwareSourceCode",
+    "name": "@gainratio/browser",
+    "url": "https://browser.gainratio.com/"
+  }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true">B</span> EdgeProc Browser</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/examples/">Examples</a>
+      <a href="/security/" aria-current="page">Security</a>
+      <a href="https://github.com/gainratio/edgeproc-browser">GitHub ↗</a>
+      <a class="nav-cta" href="/docs/#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap docs-layout">
+  <aside class="docs-nav" aria-label="Security">
+    <p class="docs-nav-title">Security</p>
+    <a href="#checked">What is checked</a>
+    <a href="#boundaries">What is refused</a>
+    <a href="#unprotected">What is not protected</a>
+    <a href="#trust">Trust root</a>
+    <a href="#storage">Local storage</a>
+    <a href="#integration">Integration rules</a>
+    <a href="#supply">Supply chain</a>
+    <a href="#versions">Supported versions</a>
+    <a href="#reporting">Report a vulnerability</a>
+  </aside>
+
+  <div class="docs-body">
+    <p class="eyebrow">Security</p>
+    <h1>Integrity, with explicit boundaries.</h1>
+    <p class="lede">This package deliberately performs network and browser-storage I/O. The useful review is not “is it encrypted?” but “what exactly does a successful sync prove, what is refused, and what is still the operator's job?”</p>
+
+    <h2 id="checked">What a successful sync checks</h2>
+    <p>The security boundary is a signed, monotonic pointer. The Worker fetches a pinned trust root (a public key or keyring) without HTTP-cache reuse, verifies the pointer, content-addresses the manifest, bounds compressed and expanded bytes, verifies every chunk and reassembled file, then promotes last.</p>
+    <ul class="checks">
+      <li>The trust root is fetched with <code>no-store</code>, capped at 64 KiB before decoding, and parsed strictly.</li>
+      <li>The pointer's Ed25519 signature verifies over canonical JSON bytes under the configured key or keyring.</li>
+      <li>The pointer's <code>sequence</code> is non-negative and has not gone backwards or forked.</li>
+      <li>The manifest matches the content hash the pointer named.</li>
+      <li>Every chunk matches its SHA-256 content address and its signed decompressed size, after a size-bounded decompression.</li>
+      <li>Every reassembled file matches its signed length and SHA-256.</li>
+      <li>A revoked or unlisted signer, and a network pointer past its signed <code>expires_at</code>, are refused.</li>
+      <li>Promotion is one transaction. A pointer can never name a missing chunk.</li>
+    </ul>
+    <p>Invalid bytes never become a degraded result. Any failure throws a typed error and the previous good version stays. A network outage is the only condition that may serve cache, and it has its own type (<code>NetworkError</code>) for exactly that reason.</p>
+
+    <h2 id="boundaries">What is refused, never used with a warning</h2>
+    <p>The documented refusal table is in the <a href="/docs/#errors">documentation</a>. The security-relevant categories are:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Condition</th><th scope="col">Result</th></tr></thead>
+        <tbody>
+          <tr><td>Signature does not verify</td><td><code>SignatureError</code>; nothing is promoted.</td></tr>
+          <tr><td>Signer is revoked or not in the keyring</td><td><code>KeyRevokedError</code> or <code>UnknownKeyError</code>; no fallback to other keys.</td></tr>
+          <tr><td>Trust root is malformed</td><td><code>KeyringError</code>; it verifies nothing.</td></tr>
+          <tr><td>Network pointer is past its signed expiry</td><td><code>PointerExpiredError</code>.</td></tr>
+          <tr><td>Chunk or file content address does not match</td><td><code>IntegrityError</code>; the bad cached row is deleted.</td></tr>
+          <tr><td>Response exceeds its byte cap</td><td><code>ResponseTooLargeError</code>, an <code>IntegrityError</code> on purpose, so sync never falls back to cache for it.</td></tr>
+          <tr><td>Sequence went backwards, or a different pointer appeared at the same sequence</td><td><code>RollbackError</code>.</td></tr>
+          <tr><td>Bundle exceeds a structural cap</td><td><code>SyncCapError</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Chunk transport failures classified as <code>NetworkError</code> get six bounded retries with exponential jitter. Integrity, signature, storage, and rollback failures are verdicts and are never retried.</p>
+
+    <h2 id="unprotected">What it cannot protect</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Not protected</th><th scope="col">Why</th></tr></thead>
+        <tbody>
+          <tr><td>A compromised page or browser extension</td><td>It runs with your page's rights. The Worker cannot defend code that can read or rewrite what the page shows.</td></tr>
+          <tr><td>An attacker who controls the public-key URL</td><td>Whoever controls the trust root controls trust. Serve it over HTTPS from a location you control, separately from mutable bundle content.</td></tr>
+          <tr><td>A stolen signing key before you revoke it</td><td>Until the key is revoked and a higher sequence is published, a signature from that key is a valid signature.</td></tr>
+          <tr><td>What your app does with checked data</td><td>The package returns bytes. Parsing, rendering, authorization, and business logic are yours.</td></tr>
+          <tr><td>A compromised device or browser</td><td>The threat model does not include an attacker with control of the device or the browser's code.</td></tr>
+          <tr><td>Secrecy of the data</td><td>Signing is not encryption. The bundle is plaintext. The opt-in <code>/seal</code> export handles passphrase-encrypted files separately.</td></tr>
+          <tr><td>A secure clock</td><td>Expiry uses the device clock unless a <code>now()</code> is injected. A slow clock can accept a pointer past its deadline; a fast one refuses early. Expiry bounds replay windows; it is not a secure time source.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="trust">Trust root, rotation, revocation, and expiry</h2>
+    <p>The configured URL serves either exactly 32 bytes (a raw Ed25519 public key, treated as a keyring of one) or a strict <code>edgeproc.keyring/v1</code> JSON keyring. A keyring is size-capped at 64 KiB before decoding; it rejects unknown fields, duplicate ids, malformed hex, and any <code>key_id</code> that is not the first 16 hex characters of SHA-256 of its key. It must leave at least one key unrevoked. A malformed trust root verifies nothing.</p>
+    <div class="grid-2">
+      <div>
+        <h3>Rotation</h3>
+        <p>Publish a keyring listing old key A and new key B, then sign new pointers with B and a <code>key_id</code> naming B at a higher <code>sequence</code>. Clients keep verifying A-signed caches while A is listed and unrevoked. Extending an <code>expires_at</code> or switching signer for the same release also needs a new <code>sequence</code>: the persistent stores refuse to promote a pointer that differs from the active one in any signed field at the same sequence.</p>
+        <h3>Revocation</h3>
+        <p>Listing a key id in <code>revoked</code> makes every signature by that key fail. A pointer naming it fails with <code>KeyRevokedError</code>; a pointer without <code>key_id</code> is accepted only under unrevoked keys. A cached bundle whose pointer was signed by a now-revoked key is refused for offline serving, yet that pointer remains the anti-rollback floor. Revoking a key never lets an older release back in.</p>
+        <h3>Unknown signer</h3>
+        <p>A pointer whose <code>key_id</code> is not in the keyring fails with <code>UnknownKeyError</code>. There is no fallback to other keys.</p>
+      </div>
+      <div>
+        <h3>Expiry as freeze/replay defense</h3>
+        <p><code>expires_at</code> is signed Unix seconds. A network-fetched pointer is refused with <code>PointerExpiredError</code> once <code>now &gt;= expires_at</code>, checked after its signature verifies. A publisher using expiry must re-sign, with a higher <code>sequence</code>, before the deadline, or every online client stops updating.</p>
+        <h3>Offline-expired policy</h3>
+        <p>When the origin is unreachable, sync serves the already-verified cached bundle even if its pointer has expired, and marks the result <code>expired: true</code>. Refusing would brick offline apps that hold intact, authentic bytes; the flag lets the application tell the user the data may be stale. Applications that must never show expired data should treat <code>expired: true</code> as a failure.</p>
+        <h3>The floor survives key changes</h3>
+        <p>The stored active pointer is the floor even when the currently pinned key cannot verify it, after a key rotation or a swapped key. A key change never resets the floor: an older release re-signed by a new key is refused as a rollback. The floor only refuses; the cached bundle is served offline only under a signature the current trust root verifies.</p>
+      </div>
+    </div>
+    <div class="note"><strong>Single-verifier callers.</strong> Code that calls <code>syncIndex</code> with its own <code>verify</code> function keeps its behavior. <code>key_id</code> is covered by the signature but cannot select a key on that path; <code>expires_at</code> is still enforced.</div>
+
+    <h2 id="storage">Local storage is untrusted durable state</h2>
+    <p>The SQLite chunk database on OPFS holds chunks, manifests, the active pointer, and the rollback floor. It is treated as untrusted durable state, not as a trusted cache:</p>
+    <ul class="plain">
+      <li>Every chunk is re-hashed on read. A mismatch throws <code>IntegrityError</code> and deletes the bad row, so the next sync fetches it again.</li>
+      <li>A trigger refuses any update that lowers the floor (<code>rollback floor may not decrease</code>). Equal-sequence disagreement fails closed.</li>
+      <li>Promotion is one transaction. Chunks are written in bounded batches, then <code>promote()</code> checks every needed chunk is present and the floor does not go backwards before writing the pointer.</li>
+      <li>Migrated 0.2.x content is checked by content address before it is copied, and the migrated floor is the highest legacy sequence, never lower.</li>
+      <li>When OPFS is refused, the cache is an in-memory SQLite database and the rollback floor lasts only for that Worker's life. Sync results report <code>cacheBackend: "sqlite-memory"</code>.</li>
+    </ul>
+    <p>Cache names and legacy (0.2.x) IndexedDB layouts are local identifiers, not secrets. Layout input is bounded and cannot select arbitrary code or callbacks. The layout is read once, to migrate a 0.2.x cache; the library never writes to IndexedDB.</p>
+
+    <h2 id="integration">Integration rules</h2>
+    <div class="grid-2">
+      <div>
+        <ul class="checks">
+          <li>Pin the expected bundle and channel when the publisher signs those identities. <code>undefined</code> deliberately skips a pin; <code>null</code> requires a legacy absent/null field exactly.</li>
+          <li>Treat the configured public-key URL as a trust root. Serve it over HTTPS and control it separately from mutable bundle content.</li>
+          <li>Keep the private signing key on the publishing machine, never in the browser or on the web server.</li>
+          <li>Do not put secrets in bundle paths or URLs.</li>
+        </ul>
+      </div>
+      <div>
+        <ul class="checks">
+          <li>Worker error messages can include URLs or producer-controlled identifiers. Do not render them as HTML.</li>
+          <li>The network sentinel is evidence about requests, not an access-control mechanism. Same-origin channel messages are shape-checked but are not treated as authenticated actors.</li>
+          <li>Applications that must never show expired data should treat <code>expired: true</code> as a failure.</li>
+          <li>Use <code>cacheFallback: "none"</code> if the app must not run without persistent storage.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 id="supply">Supply chain and release checking</h2>
+    <p><code>@gainratio/browser</code> releases publish from CI with npm provenance, which <code>npm audit signatures</code> checks. 0.1.0, published under the old name <code>@edgeproc/browser</code>, was a hand-published bootstrap and carries no npm provenance; that name is deprecated. For an exact-Git-commit install, the build refuses if a clean rebuild of <code>dist/</code> differs from the committed output (<code>pnpm verify:dist</code>).</p>
+    <p>Runtime dependencies are <code>@noble/ed25519</code>, <code>@hpcc-js/wasm-zstd</code>, and, for the opt-in <code>/seal</code> export only, <code>age-encryption</code>. The chunk store and the optional SQLite subpaths share pinned local WASM assets and do not load code from a CDN.</p>
+
+    <h2 id="versions">Supported versions</h2>
+    <p>This project is pre-1.0. Only the latest published version gets fixes. Version 0.4.4 is current. Once 1.0 ships, the latest minor of the current major will be supported as well.</p>
+
+    <h2 id="reporting">Report a vulnerability</h2>
+    <p>Please do <strong>not</strong> open a public issue for a security problem. Report it privately in one of two ways:</p>
+    <ol class="plain">
+      <li><strong>Preferred:</strong> use GitHub's private reporting. Open a draft advisory in the <a href="https://github.com/gainratio/edgeproc-browser/security/advisories/new">repository's Security tab</a>. This keeps the discussion in the repo and lets the maintainers issue a CVE if one is warranted.</li>
+      <li>Email <a href="mailto:harish.seshadri@gmail.com?subject=SECURITY">harish.seshadri@gmail.com</a> with <code>SECURITY</code> in the subject.</li>
+    </ol>
+    <p>Please include what you can: the version, a description of the problem, and the smallest input that reproduces it. Use non-sensitive data in the reproduction; do not include private keys, production payloads, or other secrets.</p>
+    <p>The project aims to acknowledge a report within 5 working days and to ship a fix, or an explanation of why it is not a vulnerability, within 30 days.</p>
+
+    <h2>Read next</h2>
+    <p><a href="/docs/">Documentation</a> · <a href="/examples/">Examples</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/SECURITY.md">SECURITY.md</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/docs/ARCHITECTURE.md">Architecture</a></p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <span>© 2026 GainRatio · <a href="https://gainratio.com/">gainratio.com</a></span>
+    <span><a href="https://github.com/gainratio/edgeproc-browser">GitHub</a> · <a href="https://www.npmjs.com/package/@gainratio/browser">npm</a> · <a href="https://open-source.gainratio.com/">Open source</a> · <a href="https://github.com/gainratio/edgeproc-browser/blob/main/LICENSE">MIT</a></span>
+  </div>
+</footer>
+</body>
+</html>
