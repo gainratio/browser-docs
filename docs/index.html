@@ -71,7 +71,7 @@
     <p class="lede">This page covers the documented browser path: install <code>@gainratio/browser</code>, sync a signed bundle in a Worker, verify it, and read the checked bytes. It also covers the documented verification core, keyrings, SQL, vectors, seal, errors, browser support, and limits.</p>
 
     <h2 id="install">Install</h2>
-    <p>The package is <code>@gainratio/browser</code>, currently version 0.4.4. It is MIT licensed and published with npm provenance from CI. The old name <code>@edgeproc/browser</code> is deprecated.</p>
+    <p>The package is <code>@gainratio/browser</code>, currently version 0.4.6. It is MIT licensed and published with npm provenance from CI. The old name <code>@edgeproc/browser</code> is deprecated.</p>
     <pre><code>npm install @gainratio/browser</code></pre>
     <p>pnpm and Bun work too. To pin an exact commit instead of a release, <code>pnpm add github:gainratio/edgeproc-browser#&lt;commit-sha&gt;</code> is documented by the project.</p>
 
@@ -343,7 +343,7 @@ if (!opened.ok) throw new Error(opened.reason);</code></pre>
     <div class="grid-2">
       <div>
         <ul class="plain">
-          <li><strong>Pre-1.0.</strong> Only the latest published version gets fixes. 0.4.4 is current.</li>
+          <li><strong>Pre-1.0.</strong> Only the latest published version gets fixes. 0.4.6 is current.</li>
           <li><strong>The trust root is capped at 64 KiB</strong> and fetched with no HTTP-cache reuse.</li>
           <li><strong>Idle timeout:</strong> 60 s by default. Any progress event re-arms it; a slow link is not a dead link.</li>
           <li><strong>Stall window:</strong> 30 s with no bytes. A transfer that keeps delivering is never cut off, however slow.</li>

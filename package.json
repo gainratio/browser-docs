@@ -6,6 +6,8 @@
   "description": "Standalone documentation site for @gainratio/browser (browser.gainratio.com)",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "gate": "npm run build && npm run check",
+    "probe:live": "node scripts/live-probe.mjs"
   }
 }
