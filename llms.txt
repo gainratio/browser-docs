@@ -1,6 +1,6 @@
 # @gainratio/browser (EdgeProc Browser) — Signed Data Checked in the Browser
 
-> TypeScript browser engine (`@gainratio/browser` v0.4.5 on npm) for syncing Ed25519-signed, SHA-256 content-addressed data bundles inside a Web Worker with anti-rollback sequence enforcement and SQLite-on-OPFS caching.
+> TypeScript browser engine (`@gainratio/browser` v0.4.6 on npm) for syncing Ed25519-signed, SHA-256 content-addressed data bundles inside a Web Worker with anti-rollback sequence enforcement and SQLite-on-OPFS caching.
 
 - Live Documentation: https://browser.gainratio.com/
 - Open Source Hub Overview: https://open-source.gainratio.com/edgeproc-browser/
@@ -15,4 +15,4 @@
 - [Overview & Quickstart](https://browser.gainratio.com/): Why checksums are not signatures, Web Worker verification flow, copyable Node and Vite quickstarts, storage boundaries, and browser compatibility.
 - [API & Concepts Reference](https://browser.gainratio.com/docs/): Install `@gainratio/browser`, bundle publishing via `edgeproc`, `EngineClient` + `@gainratio/browser/worker`, `syncIndex`, keyring rotation, SQLite/OPFS storage, vector subpaths, `/seal` passphrase encryption, and typed error codes.
 - [Runnable Examples](https://browser.gainratio.com/examples/): Copyable Vite + Worker setup, Node verification, cache inspection, keyring rotation, SQL queries, vector retrieval, sealed exports, and tamper/rollback refusal examples.
-- [Security & Threat Model](https://browser.gainratio.com/security/): Trust-root custody, anti-rollback sequence guarantees, expiry handling, OIDC npm provenance, supported versions (`0.4.5`), and private vulnerability reporting.
+- [Security & Threat Model](https://browser.gainratio.com/security/): Trust-root custody, anti-rollback sequence guarantees, expiry handling, OIDC npm provenance, supported versions (`0.4.6`), and private vulnerability reporting.

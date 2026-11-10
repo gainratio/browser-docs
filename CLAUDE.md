@@ -5,7 +5,7 @@ Canonical agent instructions for the EdgeProc Browser documentation site (`gainr
 ## Status & Portfolio Pointers
 
 - **Live URL:** `https://browser.gainratio.com/` (Cloudflare Pages project `browser-docs-bai`)
-- **Upstream library repo:** `https://github.com/gainratio/edgeproc-browser` (npm `@gainratio/browser`, current published version `0.4.5`)
+- **Upstream library repo:** `https://github.com/gainratio/edgeproc-browser` (npm `@gainratio/browser`, current published version `0.4.6`)
 - **Portfolio hub:** `https://open-source.gainratio.com/edgeproc-browser/`
 - **Portfolio engineering standard §8 (WASM):** Not applicable to this docs site — pure static HTML/CSS with zero client-side JavaScript or WASM assets.
 - **Portfolio engineering standard §3.1–§3.4:** §3.1 enforced via strict `default-src 'none'` CSP and executable-script ban in `scripts/check.mjs`; §3.2–§3.4 N/A.
@@ -23,14 +23,14 @@ Canonical agent instructions for the EdgeProc Browser documentation site (`gainr
 ## Core Invariants
 
 1. **Zero executable scripts on pages.** `scripts/check.mjs` rejects any `<script>` tag whose `type` is not `application/ld+json`, any inline `style` attribute, any `on*` event handler, and any external resource URL.
-2. **Live npm version parity.** Every version string in `index.html`, `docs/index.html`, and `security/index.html` must match `npm view @gainratio/browser version` (`0.4.5`).
+2. **Live npm version parity.** Every version string in `index.html`, `docs/index.html`, and `security/index.html` must match `npm view @gainratio/browser version` (`0.4.6`).
 3. **Explicit `dist/` allowlist.** New public root files must be listed in `scripts/build.mjs` `ROOT_FILES`; repo files (`package.json`, `CLAUDE.md`, `README.md`, `scripts/`) must never enter `dist/`.
 
 ## Quality Gates (Non-Negotiable)
 
 Run `npm run gate` before every commit:
 
-- **Scar (version lag vs npm):** Docs continued displaying `0.4.4` after `@gainratio/browser@0.4.5` shipped to npm. Verify `npm view @gainratio/browser version` whenever updating release claims.
+- **Scar (version lag vs npm):** Docs continued displaying `0.4.4` after `@gainratio/browser@0.4.5` / `0.4.6` shipped to npm. Verify `npm view @gainratio/browser version` whenever updating release claims.
 - **Scar (allowlist drift):** Root files omitted from `scripts/build.mjs` `ROOT_FILES` 404 on Cloudflare Pages; `scripts/check.mjs` verifies `dist/llms.txt` exists and repo files are absent.
 
 ## Commands

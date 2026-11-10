@@ -23,7 +23,7 @@ That builds the clean `dist/` directory and verifies every page's HTML structure
 | Path | Purpose |
 |---|---|
 | `index.html` | Landing page, problem overview, copyable quickstart, storage guarantees, FAQ |
-| `docs/index.html` | Install (`@gainratio/browser` `0.4.5`), concepts, Worker & `syncIndex` APIs, keyrings, SQL/OPFS, errors |
+| `docs/index.html` | Install (`@gainratio/browser` `0.4.6`), concepts, Worker & `syncIndex` APIs, keyrings, SQL/OPFS, errors |
 | `examples/index.html` | Copyable Vite, Node, cache, keyring, SQL, vector, `/seal`, and tamper-refusal examples |
 | `security/index.html` | Threat model, trust-root custody, anti-rollback rules, OIDC provenance, private reporting |
 | `404.html` | Not-found recovery page (`noindex,follow`, excluded from `sitemap.xml`) |
