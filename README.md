@@ -1,32 +1,45 @@
-# browser.gainratio.com
+# browser.gainratio.com — Documentation for `@gainratio/browser`
 
-Static documentation site for [`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser), the signed-bundle engine behind EdgeProc Browser.
+Static documentation site for [**`@gainratio/browser`**](https://www.npmjs.com/package/@gainratio/browser) (`gainratio/edgeproc-browser`), the signed-data browser engine.
 
-Pages:
+**What problem this solves.** Modern web apps often download data files — a product catalog, a search index, or a sanctions watchlist — and run queries right inside the browser tab. Normally the page blindly trusts whatever file comes back from the network or CDN, even if a mirror serves an outdated copy or a file is corrupted mid-transfer. `@gainratio/browser` checks a cryptographic signature on every download inside a background Web Worker before your app ever touches the data, refuses rollbacks to older versions, and keeps verified data ready for offline use.
 
-- `index.html` — overview, problem, quickstart, copyable Node example, limits, data handling, FAQ
-- `docs/index.html` — install, concepts, API, errors, browser support, limits
-- `examples/index.html` — copyable Vite, Node, cache, keyring, SQL, vector, seal, and tamper examples
-- `security/index.html` — threat model, trust-root lifecycle, reporting
-- `404.html` — not found page (noindex)
+**What this repo is.** The plain HTML and CSS documentation site served at [browser.gainratio.com](https://browser.gainratio.com/) — zero client-side JavaScript, zero external fonts, and zero trackers.
 
-The site is plain HTML and CSS. It has no build step, no client-side JavaScript, no external fonts, scripts, images, or trackers. It uses local favicon assets only.
-
-## Check
+## Run locally in one command
 
 ```sh
-node scripts/check.mjs
+npm run gate
 ```
 
-The check fails on missing metadata, JSON-LD, sitemap entries, broken internal links or anchors, malformed tag structure, inline executable code, external resources, missing assets, or a weak security header policy.
+That builds the clean `dist/` directory and verifies every page's HTML structure, links, anchors, JSON-LD metadata, `llms.txt`, and strict Content-Security-Policy headers.
 
-## Deploy
+---
 
-Build `dist/` (which contains only the public web assets) and deploy it as static files to Cloudflare Pages or any static host:
+## Under the hood (for developers)
+
+### Site map & architecture
+
+| Path | Purpose |
+|---|---|
+| `index.html` | Landing page, problem overview, copyable quickstart, storage guarantees, FAQ |
+| `docs/index.html` | Install (`@gainratio/browser` `0.4.5`), concepts, Worker & `syncIndex` APIs, keyrings, SQL/OPFS, errors |
+| `examples/index.html` | Copyable Vite, Node, cache, keyring, SQL, vector, `/seal`, and tamper-refusal examples |
+| `security/index.html` | Threat model, trust-root custody, anti-rollback rules, OIDC provenance, private reporting |
+| `404.html` | Not-found recovery page (`noindex,follow`, excluded from `sitemap.xml`) |
+| `llms.txt` | Structured plain-text index for AI coding assistants and crawlers |
+| `_headers` | Strict CSP (`default-src 'none'`), HSTS, COOP/CORP, and immutable `/assets/*` caching |
+| `scripts/build.mjs` | Explicit allowlist copier into `dist/` |
+| `scripts/check.mjs` | Zero-dependency HTML tag scanner, link/anchor verifier, SEO, and CSP contract gate |
+| `scripts/live-probe.mjs` | Secret-free production probe (`https://browser.gainratio.com`) |
+
+### Deploy
 
 ```sh
-npm run build && npm run check
+npm run gate
 npx wrangler pages deploy dist --project-name browser-docs --branch main
 ```
 
-The custom domain `browser.gainratio.com` should be attached to that deployment. `_headers` supplies the security policy and asset caching.
+- **Library source:** [github.com/gainratio/edgeproc-browser](https://github.com/gainratio/edgeproc-browser)
+- **Open-source hub:** [open-source.gainratio.com/edgeproc-browser/](https://open-source.gainratio.com/edgeproc-browser/)
+- **License:** [MIT](./LICENSE)

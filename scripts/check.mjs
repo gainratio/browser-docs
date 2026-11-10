@@ -23,6 +23,7 @@ const REQUIRED_ASSETS = [
   "favicon.svg",
   "robots.txt",
   "sitemap.xml",
+  "llms.txt",
   "_headers",
   "scripts/check.mjs",
 ];
@@ -432,11 +433,20 @@ if (!sitemap.includes('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"')) {
   fail("sitemap namespace missing");
 }
 
-/* Robots. */
+/* Robots and llms.txt. */
 const robots = read("robots.txt");
 if (!/^User-agent:\s*\*$/m.test(robots)) fail("robots.txt missing User-agent: *");
 if (!/^Allow:\s*\/$/m.test(robots)) fail("robots.txt missing Allow: /");
 if (!robots.includes(`Sitemap: ${SITE}/sitemap.xml`)) fail("robots.txt sitemap");
+if (existsSync(join(ROOT, "llms.txt"))) {
+  const llms = read("llms.txt");
+  for (const loc of expectedLocs) {
+    if (!llms.includes(loc)) fail(`llms.txt missing ${loc}`);
+  }
+  if (!llms.includes("https://open-source.gainratio.com/")) {
+    fail("llms.txt missing https://open-source.gainratio.com/");
+  }
+}
 
 /* Security headers and caching. */
 const headers = read("_headers");
@@ -495,7 +505,8 @@ for (const page of PAGES) {
 
 const distDir = join(ROOT, "dist");
 if (existsSync(distDir)) {
-  for (const forbidden of ["package.json", "README.md", "SECURITY.md", "LICENSE", "scripts"]) {
+  if (!existsSync(join(distDir, "llms.txt"))) fail("dist/: missing llms.txt");
+  for (const forbidden of ["package.json", "README.md", "CLAUDE.md", "SECURITY.md", "LICENSE", "scripts"]) {
     if (readdirSync(distDir).includes(forbidden)) fail(`dist/: leaked non-public file ${forbidden}`);
   }
 }
