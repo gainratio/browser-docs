@@ -20,6 +20,7 @@ const PAGES = [
 const UTILITY = [{ path: "404.html", file: "404.html", type: "noindex,follow" }];
 const REQUIRED_ASSETS = [
   "assets/site.css",
+  "assets/og-image.png",
   "favicon.svg",
   "robots.txt",
   "sitemap.xml",
@@ -248,6 +249,8 @@ function checkPage(page) {
   if (!/<html[^>]+lang="en"/i.test(html)) fail(`${file}: missing lang="en"`);
   const viewport = meta(tags, "viewport") ?? "";
   if (!viewport.includes("width=device-width")) fail(`${file}: bad viewport "${viewport}"`);
+  const ogImage = tags.find((tag) => tag.name === "meta" && tag.attrs.property?.toLowerCase() === "og:image")?.attrs.content;
+  if (ogImage !== `${SITE}/assets/og-image.png`) fail(`${file}: missing or unexpected og:image "${ogImage ?? ""}"`);
 
   if (titles.has(title)) fail(`${file}: duplicate title with ${titles.get(title)}`);
   else titles.set(title, file);
